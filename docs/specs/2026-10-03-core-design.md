@@ -19,8 +19,10 @@ protocols. The core never imports them.
 
 ## Design rules
 
-- **Our own format.** Policies are a typed syntax tree. Authors write YAML with infix rules, which is parsed into the
-  tree. Z3 and SMT-LIB are compile targets only. There is no Bedrock format in the core.
+- **Our own format: pure YAML.** A policy is a YAML document, and every rule expression is a YAML tree (operator maps
+  and lists). There is no expression grammar or parser of our own. The YAML decodes straight into a typed syntax
+  tree, and a published JSON Schema validates it. The same schema can later serve as the structured-output schema for
+  LLM extractors. Z3 and SMT-LIB are compile targets only. There is no Bedrock format in the core.
 - **OCaml-style Python:**
   - Closed unions of frozen, slotted dataclasses (PEP 695 `type`).
   - `match … case _: assert_never(x)` for exhaustiveness.
@@ -69,14 +71,27 @@ variables:
 rules:
   - id: R1
     source: rule 1
-    define: isSignificantlyDisrupted := disruption == CANCELLED or (disruption == DELAYED and delayHours >= 3)
+    define:
+      var: isSignificantlyDisrupted
+      as:
+        or:
+          - eq: [disruption, CANCELLED]
+          - and:
+              - eq: [disruption, DELAYED]
+              - ge: [delayHours, 3]
   - id: R3
     source: rule 3
-    when: isSignificantlyDisrupted and isWithinAirlineControl and not wantsToTravel and not hasFlown
+    when:
+      and:
+        - isSignificantlyDisrupted
+        - isWithinAirlineControl
+        - not: wantsToTravel
+        - not: hasFlown
     then: isEligibleForRefund
     explain: Significantly disrupted within our control, and the customer chooses not to travel. Full refund.
   - id: RANGE1
-    constraint: delayHours >= 0
+    constraint:
+      ge: [delayHours, 0]
     explain: A delay is never negative.
 
 outcomes:                       # tried in order; each one is a conjunction of literals
@@ -98,19 +113,26 @@ outcomes:                       # tried in order; each one is a conjunction of l
   - `ask`: has a `question`; `confirm_volunteered` defaults to true.
   - `derived`: defined by rules.
 - **Outcomes are data.** They replace the hard-coded `VERDICTS`, `REFUND` and the other constants (`core.py:25-33`).
-- **Infix grammar** (a hand-written Pratt parser, no dependency). Precedence, lowest first:
-  1. `<=>`
-  2. `=>` (right-associative)
-  3. `or`
-  4. `and`
-  5. `not`
-  6. comparisons: `== != < <= > >=` and `x in {A, B}`
-  7. `+ -`
-  8. `*`
-  9. atoms: identifiers, integers, decimals, `true`/`false`, parentheses
+- **Expression trees.** An expression is one of these:
 
-  Enum values may be bare (`CANCELLED`) when the name is unambiguous, or qualified (`DisruptionType.CANCELLED`).
-  Decimals are exact (`Fraction`).
+  | YAML | Meaning |
+  |---|---|
+  | `true`, `false` | Boolean literal |
+  | `3`, `-2` | integer literal |
+  | `{real: "2.5"}` | exact decimal, read from the string into a `Fraction` (never a YAML float) |
+  | `delayHours` | a variable, when the name is declared |
+  | `CANCELLED` or `DisruptionType.CANCELLED` | an enum value; the bare form only when it is unambiguous and not a variable name |
+  | `{not: e}` | negation |
+  | `{and: [e, …]}`, `{or: [e, …]}` | two or more operands |
+  | `{implies: [a, b]}`, `{iff: [a, b]}` | implication, equivalence |
+  | `{eq: [a, b]}`, `{ne: …}`, `{lt: …}`, `{le: …}`, `{gt: …}`, `{ge: …}` | comparisons |
+  | `{add: [e, …]}`, `{sub: [a, b]}`, `{mul: [e, …]}` | arithmetic |
+  | `{in: [x, [A, B, …]]}` | membership in a set of values |
+
+  An operator node is a map with exactly one key. Anything else (an unknown key, two keys, the wrong number of
+  operands) is a `DecodeError`. Every error carries its path (`rules[3].when.and[1]`) and, when the input was YAML text,
+  its line and column (decoding works on PyYAML nodes, which keep positions).
+- **Rule shapes:** `when` + `then` (two expressions), `define: {var, as}` and `constraint: expression`.
 
 ## Modules (`src/policyproof/core/`)
 
@@ -118,10 +140,10 @@ outcomes:                       # tried in order; each one is a conjunction of l
 |---|---|---|
 | `syntax.py` | `Sort = BoolSort \| IntSort \| RealSort \| EnumSort`. `Expr = Lit \| Var \| Not \| And \| Or \| Implies \| Iff \| Eq \| Cmp \| Arith \| In`. `Rule = When \| Define \| Constraint` (each with an id, a source and an explanation). `Variable`, `Role = System \| Ask \| Derived`, `Outcome`, `Policy`. | Only data. `And`/`Or`/`Arith` hold tuples. |
 | `typecheck.py` | `sort_of(sig, e) -> Result[Sort, SortError]`, `check_policy(raw) -> Result[Policy, tuple[SortError, ...]]` | A smart constructor: a `Policy` value is always well formed. |
-| `text.py` | `parse_expr(sig, s) -> Result[Expr, ParseError]` (the error carries a position and what was expected), `pretty(e) -> str` | |
-| `codec.py` | `decode(data: Mapping) -> Result[Policy, DecodeError]`, `encode(p) -> dict`, `from_yaml(text)`, `to_yaml(p)` | Works on strings only. Reading files belongs to effects. |
+| `codec.py` | `decode_expr(sig, node) -> Result[Expr, DecodeError]`, `encode_expr(e) -> YamlValue`, `decode(data) -> Result[Policy, DecodeError]`, `encode(p) -> dict`, `from_yaml(text)`, `to_yaml(p)` | Works on in-memory data and strings only. Reading files belongs to effects. Errors carry the path and the line and column. |
+| `render.py` | `pretty(e) -> str`, a readable one-line form for explanations and traces (`delayHours ≥ 3 ∧ ¬hasFlown`), and `to_smtlib(e)` | Display only. Nothing parses this text back. |
 | `semantics.py` | `evaluate(e, env) -> Result[Value, EvalError]`, `substitute(e, env)`, `free_vars(e)`, `simplify(e)` | The reference semantics. It is independent of Z3, and the laws are stated against it. |
-| `solver.py` | `compile(p) -> Compiled`, `check(compiled, assumptions) -> SatResult = Sat(model) \| Unsat(core) \| Unknown(reason)`, `to_smtlib(p)` | The only module that imports z3. Unsat cores are mapped back to rule ids and fact labels. |
+| `solver.py` | `compile(p) -> Compiled`, `check(compiled, assumptions) -> SatResult = Sat(model) \| Unsat(core) \| Unknown(reason)` | The only module that imports z3. Unsat cores are mapped back to rule ids and fact labels. |
 | `prove.py` | `classify(p, facts, claim) -> Proven(core) \| Refuted(core) \| Contingent(when_true, when_false) \| Inconsistent(core)`, `entails`, `equivalent` | Comes from `answer_check.classify_claim` and `localar.classify`. |
 | `facts.py` | `Fact(var, value, provenance)`, `Provenance = System(source) \| Answer(question, quote) \| Volunteered(quote)`, `merge(a, b)` | Precedence is System > Answer > Volunteered. |
 | `decide.py` | `decide(p, facts, asked) -> Decided(outcome, rules, facts_used) \| NeedInfo(var, question, reason) \| Contradiction(core) \| Escalate(reason)`, `next_question(p, facts)` | Generic over Bool and Enum variables that can be asked. An Int that can be asked is chosen only when it is the last unknown. A decision that depends on a volunteered fact first asks for confirmation. |
@@ -135,7 +157,7 @@ Every law is tested over generated, well-typed expressions and policies (`strate
 
 | # | Law | Checked by |
 |---|---|---|
-| L1 | `parse_expr(sig, pretty(e)) == Success(e)` | Hypothesis |
+| L1 | `decode_expr(sig, encode_expr(e)) == Success(e)`, and every encoded policy validates against `policy.schema.json` | Hypothesis |
 | L2 | `decode(encode(p)) == Success(p)` and `from_yaml(to_yaml(p)) == Success(p)` | Hypothesis |
 | L3 | `evaluate(substitute(e, σ), ρ) == evaluate(e, σ ∪ ρ)` | Hypothesis |
 | L4 | `evaluate(simplify(e), ρ) == evaluate(e, ρ)`, and `equivalent(e, simplify(e))` | Hypothesis, then Z3 |
@@ -168,9 +190,10 @@ policyproof/
   pyproject.toml          # uv, requires-python >=3.13, extras declared but empty until later milestones
   .python-version         # 3.14
   src/policyproof/__init__.py
-  src/policyproof/core/{syntax,typecheck,text,codec,semantics,solver,prove,facts,decide,explain,validate,check}.py
+  src/policyproof/core/{syntax,typecheck,codec,render,semantics,solver,prove,facts,decide,explain,validate,check}.py
+  src/policyproof/schema/policy.schema.json   # JSON Schema 2020-12 for the YAML format (shipped with the package)
   src/policyproof/effects/__init__.py     # placeholder: llm, translate, jev, extract, bedrock_ar come later
-  tests/{unit,laws,parity}/ , tests/policies/*.yaml , tests/strategies.py
+  tests/{unit,laws,parity}/ , tests/policies/*.yaml , tests/strategies.py   # jsonschema is a dev dependency
   .importlinter            # core must not import effects or SDKs
   .github/workflows/ci.yml # uv; ruff, ty (3.13 and 3.14), pytest; matrix 3.13 and 3.14
   LICENSE                  # Apache-2.0 (to confirm)
