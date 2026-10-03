@@ -1,0 +1,133 @@
+# The AgentCore demo's disruption policy (~/code/agentcore-disruption-demo/policy/build_policy.py), rule for rule.
+policy: flight-disruption
+version: "1.0"
+
+sorts:
+  FareType: [LITE, CHOICE, FLEX]
+  DisruptionType: [CANCELLED, DELAYED, ON_TIME]
+  DisruptionCause: [CREW, ENGINEERING, SCHEDULING, IT_SYSTEMS, WEATHER, AIR_TRAFFIC_CONTROL, AIRPORT_SECURITY, NONE]
+
+variables:
+  fareType: { sort: FareType, role: system, description: "The fare type of the booking: Lite, Choice or Flex." }
+  disruption: { sort: DisruptionType, role: system, description: "Whether the flight was cancelled, delayed or is on time." }
+  delayHours: { sort: Int, role: system, description: How many hours the flight is delayed (0 if not delayed). }
+  disruptionCause: { sort: DisruptionCause, role: system, description: "The cause of the disruption, as recorded by operations." }
+  hoursSinceBooking: { sort: Int, role: system, description: Hours between booking and the cancellation request. }
+  daysToDeparture: { sort: Int, role: system, description: Days from the request to the scheduled departure. }
+  hasFlown:
+    sort: Bool
+    role: system
+    description: True if boarding records show the customer flew on the booked flight or an alternative we arranged.
+  wantsToTravel:
+    sort: Bool
+    role: ask
+    question: Do you still want to take this trip?
+    description: >-
+      True if the customer still wants to travel on this trip; false if they choose not to travel and want to cancel.
+  isSignificantlyDisrupted: { sort: Bool, role: derived, description: "The flight is cancelled, or delayed by 3 hours or more." }
+  isWithinAirlineControl: { sort: Bool, role: derived, description: The disruption cause is within the airline's control. }
+  isCoolingOffCancellation:
+    sort: Bool
+    role: derived
+    description: The request is within 24 hours of booking and departure is more than 7 days away.
+  isEligibleForRefund: { sort: Bool, role: derived, description: The customer is entitled to a full refund. }
+  isEligibleForTravelCredit: { sort: Bool, role: derived, description: The customer is entitled to a travel credit for the full fare. }
+  isEligibleForFreeRebooking: { sort: Bool, role: derived, description: The customer is entitled to free rebooking. }
+
+rules:
+  - id: R1
+    source: rule 1
+    define:
+      var: isSignificantlyDisrupted
+      as: { or: [{ eq: [disruption, CANCELLED] }, { and: [{ eq: [disruption, DELAYED] }, { ge: [delayHours, 3] }] }] }
+    explain: A flight is significantly disrupted if and only if it is cancelled, or delayed by 3 hours or more.
+  - id: R2
+    source: rule 2
+    define:
+      var: isWithinAirlineControl
+      as: { in: [disruptionCause, [CREW, ENGINEERING, SCHEDULING, IT_SYSTEMS]] }
+    explain: A disruption is within the airline's control if and only if it is caused by crew, engineering, scheduling or IT systems.
+  - id: R3
+    source: rule 3
+    when: { and: [isSignificantlyDisrupted, isWithinAirlineControl, { not: wantsToTravel }, { not: hasFlown }] }
+    then: isEligibleForRefund
+    explain: "Significantly disrupted within our control, and the customer chooses not to travel: full refund, any fare."
+  - id: R4a
+    source: rule 4
+    when:
+      and: [isSignificantlyDisrupted, { not: isWithinAirlineControl }, { not: wantsToTravel }, { not: hasFlown },
+            { eq: [fareType, FLEX] }]
+    then: isEligibleForRefund
+    explain: "Significantly disrupted outside our control, customer chooses not to travel, Flex fare: full refund."
+  - id: R4b
+    source: rule 4
+    when:
+      and: [isSignificantlyDisrupted, { not: isWithinAirlineControl }, { not: wantsToTravel }, { not: hasFlown },
+            { ne: [fareType, FLEX] }, { not: isCoolingOffCancellation }]
+    then: isEligibleForTravelCredit
+    explain: >-
+      Significantly disrupted outside our control, customer chooses not to travel, Lite or Choice fare: travel credit
+      (unless the 24-hour rule gives a refund).
+  - id: R5
+    source: rule 5
+    when: { and: [isSignificantlyDisrupted, wantsToTravel, { not: hasFlown }] }
+    then: isEligibleForFreeRebooking
+    explain: "Significantly disrupted for any reason, and the customer still wants to travel: free rebooking."
+  - id: R6
+    source: rule 6
+    when: wantsToTravel
+    then: { and: [{ not: isEligibleForRefund }, { not: isEligibleForTravelCredit }] }
+    explain: Refunds and travel credits are only for customers who choose not to travel.
+  - id: R7
+    source: rule 7
+    when: hasFlown
+    then: { and: [{ not: isEligibleForRefund }, { not: isEligibleForTravelCredit }] }
+    explain: A customer who has flown is not entitled to a refund or travel credit for that flight.
+  - id: R8def
+    source: rule 8
+    define:
+      var: isCoolingOffCancellation
+      as: { and: [{ le: [hoursSinceBooking, 24] }, { gt: [daysToDeparture, 7] }] }
+    explain: >-
+      A cancellation is a 24-hour cancellation if and only if it is within 24 hours of booking and departure is more
+      than 7 days away.
+  - id: R8
+    source: rule 8
+    when: { and: [isCoolingOffCancellation, { not: wantsToTravel }, { not: hasFlown }] }
+    then: isEligibleForRefund
+    explain: "Cancelling within 24 hours of booking, with departure more than 7 days away: full refund, any fare."
+  - id: R9a
+    source: rule 9
+    when:
+      and: [{ not: isSignificantlyDisrupted }, { not: isCoolingOffCancellation }, { not: wantsToTravel },
+            { not: hasFlown }, { eq: [fareType, FLEX] }]
+    then: isEligibleForRefund
+    explain: "Cancelling a flight that is not significantly disrupted, Flex fare: full refund."
+  - id: R9b
+    source: rule 9
+    when:
+      and: [{ not: isSignificantlyDisrupted }, { not: isCoolingOffCancellation }, { not: wantsToTravel },
+            { not: hasFlown }, { eq: [fareType, CHOICE] }]
+    then: isEligibleForTravelCredit
+    explain: "Cancelling a flight that is not significantly disrupted, Choice fare: travel credit."
+  - id: R9c
+    source: rule 9
+    when:
+      and: [{ not: isSignificantlyDisrupted }, { not: isCoolingOffCancellation }, { not: wantsToTravel },
+            { not: hasFlown }, { eq: [fareType, LITE] }]
+    then: { and: [{ not: isEligibleForRefund }, { not: isEligibleForTravelCredit }] }
+    explain: "Cancelling a flight that is not significantly disrupted, Lite fare: no refund and no travel credit."
+  - id: R10
+    source: rule 10
+    when: isEligibleForRefund
+    then: { not: isEligibleForTravelCredit }
+    explain: A customer never receives both a refund and a travel credit for the same flight.
+  - id: RANGE1
+    constraint: { ge: [delayHours, 0] }
+    explain: A delay is never negative.
+
+outcomes:
+  full_refund: { isEligibleForRefund: true }
+  travel_credit: { isEligibleForTravelCredit: true, isEligibleForRefund: false }
+  free_rebooking: { isEligibleForFreeRebooking: true, isEligibleForRefund: false, isEligibleForTravelCredit: false }
+  no_refund_or_credit: { isEligibleForRefund: false, isEligibleForTravelCredit: false }

@@ -54,3 +54,29 @@ def test_l10_answering_the_questions_always_ends(world):
         asked.append(d.var)
         known.append(Fact(d.var, world[d.var], SOURCE[d.var]))
     assert isinstance(d, Decided)
+
+
+RETAIL = compile(load("retail_refund.yaml"))
+CATEGORIES = ["HEADPHONES", "LAPTOPS", "PHONES", "TABLETS", "CAMERAS", "SMART_WATCHES", "NON_ELECTRONICS"]
+RETAIL_WORLDS = st.fixed_dictionaries({
+    "itemCategory": st.sampled_from(CATEGORIES).map(lambda v: EnumLit("ItemCategory", v)),
+    "daysSincePurchase": st.integers(0, 40).map(IntLit),
+    "hasProofOfPurchase": st.booleans().map(BoolLit),
+    "isOpened": st.booleans().map(BoolLit), "isDefective": st.booleans().map(BoolLit),
+    "isFinalSale": st.booleans().map(BoolLit), "isBoughtOnClearance": st.booleans().map(BoolLit),
+}).filter(lambda w: w["isFinalSale"] == BoolLit(True) or w["isBoughtOnClearance"] == BoolLit(False))
+
+
+@given(RETAIL_WORLDS)
+def test_l10_retail_questions_end_without_repeating(world):
+    system = ("itemCategory", "daysSincePurchase", "hasProofOfPurchase")
+    known = [Fact(n, world[n], FromSystem("orders")) for n in system]
+    asked: list[str] = []
+    for _ in range(5):
+        d = decide(RETAIL, facts(*known))
+        if not isinstance(d, NeedInfo):
+            break
+        assert d.var not in asked, "the same question twice"
+        asked.append(d.var)
+        known.append(Fact(d.var, world[d.var], Answered(d.question, "...")))
+    assert not isinstance(d, NeedInfo) and len(asked) <= 4

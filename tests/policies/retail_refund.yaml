@@ -1,0 +1,62 @@
+# The policy-reasoning-lab's retail refund policy (policy/extracted/bedrock_policy_fixed_desc2.json, built by
+# Bedrock Automated Reasoning, bare assertion removed), with the lab's reviewed roles and questions (lab/interactive.py).
+policy: retail-refund
+version: "1.0"
+
+sorts:
+  ItemCategory: [HEADPHONES, LAPTOPS, PHONES, TABLETS, CAMERAS, SMART_WATCHES, NON_ELECTRONICS, ItemCategory_OTHER]
+
+variables:
+  itemCategory: { sort: ItemCategory, role: system, description: The item's category in the product catalogue. }
+  daysSincePurchase: { sort: Int, role: system, description: Days since the purchase. }
+  hasProofOfPurchase: { sort: Bool, role: system, description: A fulfilled order is on record. }
+  isOpened: { sort: Bool, role: ask, question: "Has the item been opened or used?", description: The item was opened or used. }
+  isDefective: { sort: Bool, role: ask, question: "Is the item faulty or damaged in any way?", description: The item is faulty. }
+  isFinalSale:
+    sort: Bool
+    role: ask
+    question: Was the item marked as a final sale item when you bought it?
+    description: The item was sold as final sale.
+  isBoughtOnClearance: { sort: Bool, role: ask, question: "Did you buy the item on clearance?", description: Bought on clearance. }
+  isElectronics: { sort: Bool, role: derived, description: The item is electronics. }
+  returnWindowDays: { sort: Int, role: derived, description: The return window in days. }
+  isWithinReturnWindow: { sort: Bool, role: derived, description: The return is within the window. }
+  isEligibleForRefund: { sort: Bool, role: derived, description: The customer gets a refund. }
+  isEligibleForStoreCredit: { sort: Bool, role: derived, description: The customer gets store credit. }
+  refundIssuedToOriginalPaymentMethod: { sort: Bool, role: derived, description: The refund goes to the original card. }
+
+rules:
+  - { id: SK3FEN02FVIO, when: isElectronics, then: { eq: [returnWindowDays, 15] } }
+  - { id: OGI8QLVM76JQ, when: { not: isElectronics }, then: { eq: [returnWindowDays, 30] } }
+  - { id: ABM61UCQIATH, when: isBoughtOnClearance, then: isFinalSale }
+  - id: DWXJ2S2XYZUF
+    when: { and: [{ not: hasProofOfPurchase }, isWithinReturnWindow, { not: isFinalSale }] }
+    then: isEligibleForStoreCredit
+  - { id: DIIG6K1VU4XX, when: isEligibleForRefund, then: refundIssuedToOriginalPaymentMethod }
+  - { id: V8UWX090HX0T, constraint: { ge: [daysSincePurchase, 0] } }
+  - id: ONON98QS0WUH
+    when: isElectronics
+    then: { in: [itemCategory, [HEADPHONES, LAPTOPS, PHONES, TABLETS, CAMERAS, SMART_WATCHES]] }
+  - { id: KY3RIEBWEDMK, when: { not: isElectronics }, then: { ne: [itemCategory, HEADPHONES] } }
+  - { id: C2SKXL8IW6RM, when: { not: isElectronics }, then: { ne: [itemCategory, LAPTOPS] } }
+  - { id: SE8K0YWDBI1W, when: { not: isElectronics }, then: { ne: [itemCategory, PHONES] } }
+  - { id: JGQLDGLYW7ZI, when: { not: isElectronics }, then: { ne: [itemCategory, TABLETS] } }
+  - { id: EHQO1VGSPR14, when: { not: isElectronics }, then: { ne: [itemCategory, CAMERAS] } }
+  - { id: L2QBL1XLV0LD, when: { not: isElectronics }, then: { ne: [itemCategory, SMART_WATCHES] } }
+  - { id: IS8WQL2OIEDF, when: isWithinReturnWindow, then: { le: [daysSincePurchase, returnWindowDays] } }
+  - { id: MSFVLCGI5K7A, when: { not: isWithinReturnWindow }, then: { not: { le: [daysSincePurchase, returnWindowDays] } } }
+  - { id: GWOJV03966HC, when: isEligibleForRefund, then: isWithinReturnWindow }
+  - { id: GHWUAAS7QUNN, when: isEligibleForRefund, then: hasProofOfPurchase }
+  - { id: XK2MU8S4X120, when: isEligibleForRefund, then: { not: isFinalSale } }
+  - { id: E0IJ7HTKZD3G, when: isEligibleForRefund, then: { or: [{ not: isOpened }, isDefective] } }
+  - id: ZZPRFP2JBO7H
+    when: { not: isEligibleForRefund }
+    then: { or: [{ not: isWithinReturnWindow }, { not: hasProofOfPurchase }, isFinalSale, isOpened] }
+  - id: J2AW0WCGSYWX
+    when: { not: isEligibleForRefund }
+    then: { or: [{ not: isWithinReturnWindow }, { not: hasProofOfPurchase }, isFinalSale, { not: isDefective }] }
+
+outcomes:
+  refund: { isEligibleForRefund: true }
+  store_credit: { isEligibleForStoreCredit: true }
+  no_refund: { isEligibleForRefund: false }
