@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:policyproof:policy:1",
+  "title": "policyproof policy",
+  "description": "Enum sorts, typed variables with roles, rules as expression trees, and named outcomes.",
+  "type": "object",
+  "required": [
+    "policy",
+    "version",
+    "variables",
+    "rules"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "policy": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "sorts": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "variables": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/name"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/variable"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "outcomes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {
+          "$ref": "#/$defs/literal"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "variable": {
+      "type": "object",
+      "required": [
+        "sort",
+        "role"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sort": {
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "system",
+            "ask",
+            "derived"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "confirm_volunteered": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "properties": {
+          "role": {
+            "const": "ask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "question"
+        ]
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "explain": {
+          "type": "string"
+        },
+        "when": {
+          "$ref": "#/$defs/expr"
+        },
+        "then": {
+          "$ref": "#/$defs/expr"
+        },
+        "constraint": {
+          "$ref": "#/$defs/expr"
+        },
+        "define": {
+          "type": "object",
+          "required": [
+            "var",
+            "as"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "var": {
+              "type": "string"
+            },
+            "as": {
+              "$ref": "#/$defs/expr"
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "when",
+            "then"
+          ]
+        },
+        {
+          "required": [
+            "define"
+          ]
+        },
+        {
+          "required": [
+            "constraint"
+          ]
+        }
+      ]
+    },
+    "real": {
+      "type": "object",
+      "required": [
+        "real"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "real": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      }
+    },
+    "literal": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/real"
+        }
+      ]
+    },
+    "expr": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/real"
+        },
+        {
+          "type": "object",
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/expr"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "and"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "and": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "or"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "or": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "implies"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "implies": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "iff"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "iff": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "eq"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "eq": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "ne"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ne": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "lt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lt": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "le"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "le": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "gt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "gt": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "ge"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ge": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "sub"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "sub": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "add"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "add": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "mul"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "mul": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "in"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "in": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/expr"
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/literal"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
