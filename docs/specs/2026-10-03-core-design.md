@@ -208,3 +208,19 @@ and migrating the demo. Each of these is a later milestone, built on the protoco
 
 1. **Licence:** Apache-2.0 is proposed.
 2. **Name:** `policyproof`. Check that it is free on PyPI before the first release.
+
+## Refinements from prototyping the plan (2026-10-03)
+
+The implementation plan (`docs/plans/2026-10-03-core.md`) was prototyped end to end before it was written. Running
+it refined the spec in these places:
+
+- `Eq` is `Cmp(op="eq")`. `prove.Verdict` adds `Undetermined(reason)` for when the solver gives up.
+- `UnreachableEnumValue` becomes `ImpossibleInput(var, value)`, which covers any Bool or enum input. Two findings are
+  added: `OverlappingOutcomes` (review) and `SolverGaveUp` (error).
+- Law L8 (monotonicity) needs outcomes that can't hold together. When two outcomes overlap, the earlier one wins, so
+  a decision can depend on outcome order. The validator reports each overlap for review. The airline policy has one
+  overlap (free rebooking and "no refund or credit"). The retail policy has a real gap: nothing stops a refund and
+  store credit at once.
+- YAML traps the decoder now explains:
+  - `YES`, `NO`, `ON` and `OFF` are booleans in YAML 1.1.
+  - A comma or `?` inside `{ }` splits the value.
