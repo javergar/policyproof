@@ -224,3 +224,26 @@ it refined the spec in these places:
 - YAML traps the decoder now explains:
   - `YES`, `NO`, `ON` and `OFF` are booleans in YAML 1.1.
   - A comma or `?` inside `{ }` splits the value.
+
+## Refinements from the final review (2026-10-03)
+
+- **Facts are checked against the policy.** A fact about an unknown or derived variable, or with a value of the
+  wrong sort, gives `InvalidFacts(errors)`, a new `Decision` case.
+- **Which facts are firm depends on the variable's role.** Customers can't supply system facts: what they say about a
+  system variable is never firm. Consistency is judged on firm facts only, so contradictory statements a customer
+  only made in passing lead to a confirmation question, not a `Contradiction`.
+- **`decide` escalates instead of guessing.** It escalates up front when the policy has no outcomes, and when the
+  solver gives up on an earlier outcome (it never skips past it). Int and Real questions are asked only when nothing
+  else is left.
+- **Every solver call has a timeout** (`compile(p, timeout_ms=10_000)`). A check the solver gives up on is reported
+  as `SolverGaveUp` in validation, and never counts as a pass.
+- **Validation reports `InputsRelated(rule)` for review.** It flags rules that only relate inputs, because answers
+  that break such a rule end in a contradiction at run time.
+- **The answer check fails closed.** The built-in `grounded` rule fails a claim whose quote isn't in the reply. A claim
+  that isn't a Boolean statement over the policy's names is `ill_typed`, and is also a problem.
+- **The decoder catches more YAML mistakes:**
+  - It rejects duplicate keys.
+  - It explains `YES`, `NO`, `ON` and `OFF` wherever they appear, not only in sort definitions.
+  - It hints about quoting when a `{ }` mapping fails to parse.
+- **`check_policy` rejects more malformed names.** It rejects empty sorts, and enum values and rule ids that are not
+  identifiers, so the SMT-LIB scripts `explain` produces stay runnable.

@@ -100,7 +100,12 @@ class BadName:
     name: str
 
 
-type SortError = UnknownName | UnknownValue | SortMismatch | BadArity | Duplicate | BadName
+@dataclass(frozen=True, slots=True)
+class EmptySort:
+    name: str
+
+
+type SortError = UnknownName | UnknownValue | SortMismatch | BadArity | Duplicate | BadName | EmptySort
 
 
 def sort_name(s: Sort) -> str:
@@ -178,7 +183,9 @@ def check_policy(p: Policy) -> Result[CheckedPolicy, tuple[SortError, ...]]:
     for kind, names in (("sort", [s.name for s in p.sorts]), ("variable", [v.name for v in p.variables]),
                         ("rule", [r.id for r in p.rules]), ("outcome", [o.name for o in p.outcomes])):
         found += [Duplicate(kind, n) for n, k in Counter(names).items() if k > 1]
-    found += [BadName(n) for n in [*sig.sorts, *sig.variables] if not NAME.match(n)]
+    found += [BadName(n) for n in [*sig.sorts, *sig.variables, *(r.id for r in p.rules)] if not NAME.match(n)]
+    found += [BadName(f"{s.name}.{v}") for s in p.sorts for v in s.values if not NAME.match(v)]
+    found += [EmptySort(s.name) for s in p.sorts if not s.values]
     found += [Duplicate("value", f"{s.name}.{v}") for s in p.sorts for v, k in Counter(s.values).items() if k > 1]
     for v in p.variables:
         if isinstance(v.sort, EnumSort) and sig.sorts.get(v.sort.name) != v.sort:

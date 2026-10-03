@@ -9,8 +9,9 @@ from typing import Literal, assert_never
 
 from returns.result import Failure, Result, Success
 
+from policyproof.core.render import pretty
 from policyproof.core.semantics import free_vars, rule_expr
-from policyproof.core.solver import Compiled, Model, RuleLabel, Sat, Unknown, Unsat, check, fact, totality
+from policyproof.core.solver import Compiled, Model, RuleLabel, Sat, SatResult, Unknown, Unsat, check, fact, totality
 from policyproof.core.syntax import (
     Ask,
     BoolLit,
@@ -87,6 +88,14 @@ class OverlappingOutcomes:
 
 
 @dataclass(frozen=True, slots=True)
+class InputsRelated:
+    """A rule that only relates inputs (system facts and answers): answers that break it can't be decided, so the
+    case ends in a contradiction at run time instead of an outcome."""
+
+    rule: str
+
+
+@dataclass(frozen=True, slots=True)
 class ConstraintRule:
     rule: str
 
@@ -97,7 +106,8 @@ class DefinitionToReview:
 
 
 type Finding = (Conflict | NotTotal | ImpossibleInput | UnreachableOutcome | SolverGaveUp | UnusedVariable
-                | NearDuplicate | DisjointGroups | OverlappingOutcomes | ConstraintRule | DefinitionToReview)
+                | NearDuplicate | DisjointGroups | OverlappingOutcomes | InputsRelated | ConstraintRule
+                | DefinitionToReview)
 type Severity = Literal["error", "warning", "review"]
 SEVERITY_ORDER: dict[Severity, int] = {"error": 0, "warning": 1, "review": 2}
 
@@ -108,7 +118,7 @@ def severity(f: Finding) -> Severity:
             return "error"
         case UnusedVariable() | NearDuplicate() | DisjointGroups():
             return "warning"
-        case OverlappingOutcomes() | ConstraintRule() | DefinitionToReview():
+        case OverlappingOutcomes() | InputsRelated() | ConstraintRule() | DefinitionToReview():
             return "review"
         case _:
             assert_never(f)
@@ -131,6 +141,8 @@ def _structural(c: Compiled) -> list[Finding]:
                 pass
             case _:
                 assert_never(r)
+    inputs = _inputs(c)
+    found += [InputsRelated(r.id) for r in p.rules if not isinstance(r, Constraint) and _rule_vars(r) <= inputs]
     used = frozenset().union(*(_rule_vars(r) for r in p.rules), *({v for v, _ in o.assignment} for o in p.outcomes))
     found += [UnusedVariable(v.name) for v in p.variables if v.name not in used]
     names = [v.name for v in p.variables]
@@ -175,10 +187,28 @@ def _finite_values(v_sort: BoolSort | EnumSort) -> tuple[Lit, ...]:
             assert_never(v_sort)
 
 
+def _inputs(c: Compiled) -> frozenset[str]:
+    return frozenset(v.name for v in c.policy.variables if isinstance(v.role, System | Ask))
+
+
+def _expect(found: list[Finding], name: str, result: SatResult, *, if_unsat: Finding | None = None,
+            if_sat: Finding | None = None) -> None:
+    """Record what a check found; a check the solver gave up on is an error, never a silent pass."""
+    match result:
+        case Unsat():
+            found.extend([if_unsat] if if_unsat else [])
+        case Sat():
+            found.extend([if_sat] if if_sat else [])
+        case Unknown(reason):
+            found.append(SolverGaveUp(name, reason))
+        case _:
+            assert_never(result)
+
+
 def _logical(c: Compiled) -> list[Finding]:
     p = c.policy
     found: list[Finding] = []
-    inputs = frozenset(v.name for v in p.variables if isinstance(v.role, System | Ask))
+    inputs = _inputs(c)
     match totality(c, inputs):
         case Sat(witness):
             found.append(NotTotal(witness))
@@ -191,12 +221,15 @@ def _logical(c: Compiled) -> list[Finding]:
     for v in p.variables:
         if isinstance(v.role, Derived) or not isinstance(v.sort, BoolSort | EnumSort):
             continue
-        found += [ImpossibleInput(v.name, x) for x in _finite_values(v.sort)
-                  if isinstance(check(c, [fact(v.name, x)]), Unsat)]
+        for x in _finite_values(v.sort):
+            _expect(found, f"impossible input {v.name} = {pretty(x)}", check(c, [fact(v.name, x)]),
+                    if_unsat=ImpossibleInput(v.name, x))
     assignments = {o.name: [fact(var, value) for var, value in o.assignment] for o in p.outcomes}
-    found += [UnreachableOutcome(name) for name, a in assignments.items() if isinstance(check(c, a), Unsat)]
-    found += [OverlappingOutcomes(a, b) for a, b in combinations(assignments, 2)
-              if isinstance(check(c, assignments[a] + assignments[b]), Sat)]
+    for name, a in assignments.items():
+        _expect(found, f"reachable outcome {name}", check(c, a), if_unsat=UnreachableOutcome(name))
+    for a, b in combinations(assignments, 2):
+        _expect(found, f"overlapping outcomes {a}, {b}", check(c, assignments[a] + assignments[b]),
+                if_sat=OverlappingOutcomes(a, b))
     return found
 
 

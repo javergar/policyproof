@@ -9,7 +9,7 @@ from policyproof.core.check import (
 from policyproof.core.decide import decide
 from policyproof.core.facts import Answered, Fact, FromSystem, facts
 from policyproof.core.solver import compile
-from policyproof.core.syntax import BoolLit, IntLit, Not, Var
+from policyproof.core.syntax import BoolLit, IntLit, Var
 
 LATE = Fact("daysLate", IntLit(3), FromSystem("tracking"))
 WANTS = Fact("wantsRefund", BoolLit(True), Answered("Would you like your money back?", "yes"))
@@ -44,11 +44,21 @@ def test_claims_before_the_decision_are_not_proven(toy):
     assert [p.rule for p in result.problems] == ["claims_hold"]
 
 
-def test_ungrounded_claims_are_reported_but_not_held_against_the_reply(toy):
+def test_a_claim_whose_quote_is_not_in_the_reply_fails_the_check(toy):
+    c, d, fs = setup(toy, LATE)
+    reply = "You'll get a full refund! Would you like your money back?"
+    result = check_reply(c, d, fs, reply, [REFUND])
+    assert not result.passed and result.claims[0].status == "ungrounded"
+    assert [p.rule for p in result.problems] == ["grounded"]
+
+
+def test_ill_typed_claims_are_problems_not_crashes(toy):
     c, d, fs = setup(toy, LATE, WANTS)
-    reply = "Good news: you will get a full refund."
-    result = check_reply(c, d, fs, reply, [REFUND, Claim(Not(Var("voucher")), "no voucher")])
-    assert result.passed and result.claims[1].status == "ungrounded"
+    reply = "You will get a full refund, in 3 days, from nowhere."
+    claims = [REFUND, Claim(Var("daysLate"), "in 3 days"), Claim(Var("nowhere"), "from nowhere")]
+    result = check_reply(c, d, fs, reply, claims)
+    assert [r.status for r in result.claims] == ["proven", "ill_typed", "ill_typed"]
+    assert not result.passed
 
 
 def test_a_decided_reply_must_state_the_outcome(toy):

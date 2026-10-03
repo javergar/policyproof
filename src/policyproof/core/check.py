@@ -13,13 +13,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal, assert_never
 
+from returns.result import Success
+
 from policyproof.core.decide import Decided, Decision, NeedInfo, fact_assertions, firm_facts, outcome_expr
 from policyproof.core.facts import Facts
 from policyproof.core.prove import Contingent, Inconsistent, Proven, Refuted, Undetermined, classify, entails
 from policyproof.core.solver import Compiled
-from policyproof.core.syntax import Expr
+from policyproof.core.syntax import BOOL, Expr
+from policyproof.core.typecheck import signature, sort_of
 
-type ClaimStatus = Literal["proven", "contradicts", "not_proven", "inconsistent", "ungrounded"]
+type ClaimStatus = Literal["proven", "contradicts", "not_proven", "inconsistent", "ungrounded", "ill_typed"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,13 +67,16 @@ def normalize(text: str) -> str:
 
 
 def judge_claims(c: Compiled, fs: Facts, reply: str, claims: Sequence[Claim]) -> tuple[ClaimResult, ...]:
-    """Each claim's status against the rules and the firm facts. A claim whose quote isn't in the reply is
-    'ungrounded': the translator invented it, so it is reported but not held against the reply."""
-    text, given = normalize(reply), fact_assertions(firm_facts(c, fs))
+    """Each claim's status against the rules and the firm facts. 'ungrounded': the quote isn't in the reply, so the
+    claim can't be tied to what the customer would read. 'ill_typed': not a Boolean statement over the policy's
+    names (a translator error), so it can't be checked at all."""
+    text, given, sig = normalize(reply), fact_assertions(firm_facts(c, fs)), signature(c.policy)
 
     def status(claim: Claim) -> ClaimStatus:
         if not claim.quote.strip() or normalize(claim.quote) not in text:
             return "ungrounded"
+        if sort_of(sig, claim.expr) != Success(BOOL):
+            return "ill_typed"
         verdict = classify(c, claim.expr, given)
         match verdict:
             case Proven():
@@ -90,8 +96,15 @@ def judge_claims(c: Compiled, fs: Facts, reply: str, claims: Sequence[Claim]) ->
 # ---- built-in rules
 
 
+def grounded(i: CheckInput) -> tuple[Problem, ...]:
+    """Every claim must quote the reply word for word; otherwise it can't be checked, and the check fails closed."""
+    return tuple(Problem("grounded", f'"{r.claim.quote}" is not in the reply, so its claim can\'t be checked.')
+                 for r in i.claims if r.status == "ungrounded")
+
+
 def claims_hold(i: CheckInput) -> tuple[Problem, ...]:
     words = {"contradicts": "contradicts the policy and the facts",
+             "ill_typed": "can't be checked: it isn't a statement over the policy's terms",
              "not_proven": "is not proven: nothing in the decision supports it",
              "inconsistent": "rests on facts that contradict each other"}
     return tuple(Problem("claims_hold", f'"{r.claim.quote}" {words[r.status]}.')
@@ -130,7 +143,7 @@ def single_question(i: CheckInput) -> tuple[Problem, ...]:
     return ()
 
 
-DEFAULT_RULES: tuple[ReplyRule, ...] = (claims_hold, states_outcome, asks_open_question, single_question)
+DEFAULT_RULES: tuple[ReplyRule, ...] = (grounded, claims_hold, states_outcome, asks_open_question, single_question)
 
 # ---- rule builders for domain checks
 

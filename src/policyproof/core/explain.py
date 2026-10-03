@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import assert_never
 
-from policyproof.core.decide import Contradiction, Decided, Decision, Escalate, NeedInfo, outcome_expr
+from policyproof.core.decide import Contradiction, Decided, Decision, Escalate, InvalidFacts, NeedInfo, outcome_expr
 from policyproof.core.facts import Fact, Facts, all_facts
 from policyproof.core.render import pretty, smt_declarations, to_smtlib
 from policyproof.core.semantics import rule_expr
@@ -64,7 +64,7 @@ def explain(c: Compiled, d: Decision, fs: Facts) -> Trace:
         case Contradiction(rules, facts):
             steps = tuple(step(r) for r in c.policy.rules if r.id in rules)
             return Trace(facts, steps, script(c, rules, facts, None), "unsat")
-        case Escalate():
+        case Escalate() | InvalidFacts():
             return Trace(every, (), "", "")
         case _:
             assert_never(d)

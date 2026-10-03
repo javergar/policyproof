@@ -56,3 +56,50 @@ def test_conflict_skips_the_logical_checks_and_comes_first():
     assert UnusedVariable("unused") in found
     ranks = [["error", "warning", "review"].index(severity(f)) for f in found]
     assert ranks == sorted(ranks)
+
+
+def _compiled(text: str, **kw):
+    from policyproof.core.codec import from_yaml
+    return compile(from_yaml(text).unwrap(), **kw)
+
+
+RELATED = """policy: t
+version: "1"
+variables:
+  member: { sort: Bool, role: system }
+  wants: { sort: Bool, role: ask, question: "Want it?" }
+  refund: { sort: Bool, role: derived }
+rules:
+  - { id: R1, when: member, then: wants }
+  - { id: R2, when: wants, then: refund }
+outcomes:
+  refund: { refund: true }
+"""
+
+
+def test_rules_between_inputs_are_reported_for_review():
+    from policyproof.core.validate import InputsRelated
+    found = validate(_compiled(RELATED))
+    assert InputsRelated("R1") in found and severity(InputsRelated("R1")) == "review"
+
+
+HARD = """policy: t
+version: "1"
+variables:
+  b: { sort: Bool, role: system }
+  x: { sort: Int, role: system }
+  y: { sort: Int, role: system }
+  z: { sort: Int, role: system }
+rules:
+  - id: H1
+    when: b
+    then:
+      and: [{ gt: [x, 0] }, { gt: [y, 0] }, { gt: [z, 0] },
+            { eq: [{ add: [{ mul: [x, x, x] }, { mul: [y, y, y] }] }, { mul: [z, z, z] }] }]
+"""
+
+
+def test_a_check_the_solver_gives_up_on_is_an_error_not_a_pass():
+    from policyproof.core.validate import SolverGaveUp
+    found = validate(_compiled(HARD, timeout_ms=300))
+    assert any(isinstance(f, SolverGaveUp) and f.check.startswith("impossible input b") for f in found)

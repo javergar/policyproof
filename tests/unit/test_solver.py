@@ -8,7 +8,7 @@ from policyproof.core.solver import (
     compile,
     fact,
 )
-from policyproof.core.syntax import BoolLit, EnumLit, IntLit, Not, Var
+from policyproof.core.syntax import BoolLit, EnumLit, IntLit, Not, RealLit, Var
 
 
 def test_rules_alone_are_satisfiable(toy):
@@ -42,3 +42,40 @@ def test_rules_can_be_left_out(toy):
 def test_each_policy_gets_its_own_context(toy):
     a, b = compile(toy), compile(toy)
     assert a.ctx is not b.ctx
+
+
+FERMAT = """policy: fermat
+version: "1"
+variables:
+  x: { sort: Int, role: system }
+  y: { sort: Int, role: system }
+  z: { sort: Int, role: system }
+rules:
+  - { id: F1, constraint: { and: [{ gt: [x, 0] }, { gt: [y, 0] }, { gt: [z, 0] }] } }
+  - { id: F2, constraint: { eq: [{ add: [{ mul: [x, x, x] }, { mul: [y, y, y] }] }, { mul: [z, z, z] }] } }
+"""
+
+
+def _policy(text):
+    from policyproof.core.codec import from_yaml
+    return from_yaml(text).unwrap()
+
+
+def test_the_solver_gives_up_instead_of_hanging():
+    from policyproof.core.solver import Unknown
+    assert isinstance(check(compile(_policy(FERMAT), timeout_ms=300), []), Unknown)
+
+
+def test_a_variable_named_like_an_internal_tracker_is_harmless():
+    p = _policy('policy: t\nversion: "1"\nvariables:\n  __track_0: { sort: Bool, role: system }\n'
+                '  o: { sort: Bool, role: derived }\nrules:\n  - { id: R1, define: { var: o, as: __track_0 } }\n')
+    assert isinstance(check(compile(p), [(ExtraLabel("x"), Not(Var("o")))]), Sat)
+
+
+def test_an_irrational_model_value_is_approximated_not_a_crash():
+    p = _policy('policy: t\nversion: "1"\nvariables:\n  x: { sort: Real, role: system }\n'
+                'rules:\n  - { id: R1, constraint: { eq: [{ mul: [x, x] }, { real: "2" }] } }\n')
+    result = check(compile(p), [])
+    assert isinstance(result, Sat)
+    x = result.model["x"]
+    assert isinstance(x, RealLit) and abs(x.value * x.value - 2) < 1e-9

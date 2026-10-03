@@ -96,6 +96,10 @@ class Compiled:
     sorts: Mapping[str, Sort]
     values: Mapping[tuple[str, str], z3.ExprRef]
     rules: Mapping[str, z3.BoolRef]
+    timeout_ms: int  # every solver call gives up after this long and reports Unknown
+
+
+DEFAULT_TIMEOUT_MS = 10_000
 
 
 def _declare(name: str, sort: Sort, ctx: z3.Context, enums: Mapping[str, z3.DatatypeSortRef]) -> z3.ExprRef:
@@ -112,7 +116,7 @@ def _declare(name: str, sort: Sort, ctx: z3.Context, enums: Mapping[str, z3.Data
             assert_never(sort)
 
 
-def compile(p: CheckedPolicy) -> Compiled:
+def compile(p: CheckedPolicy, *, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> Compiled:
     ctx = z3.Context()
     enums: dict[str, z3.DatatypeSortRef] = {}
     values: dict[tuple[str, str], z3.ExprRef] = {}
@@ -122,8 +126,15 @@ def compile(p: CheckedPolicy) -> Compiled:
         values |= {(s.name, v): c for v, c in zip(s.values, consts, strict=True)}
     sig = signature(p)
     variables = {n: _declare(n, s, ctx, enums) for n, s in sig.variables.items()}
-    c = Compiled(p, ctx, variables, dict(sig.variables), values, {})
-    return Compiled(p, ctx, variables, dict(sig.variables), values, {r.id: rule_formula(c, r) for r in p.rules})
+    c = Compiled(p, ctx, variables, dict(sig.variables), values, {}, timeout_ms)
+    rules = {r.id: rule_formula(c, r) for r in p.rules}
+    return Compiled(p, ctx, variables, dict(sig.variables), values, rules, timeout_ms)
+
+
+def _solver(c: Compiled) -> z3.Solver:
+    s = z3.Solver(ctx=c.ctx)
+    s.set("timeout", c.timeout_ms)
+    return s
 
 
 def rule_formula(c: Compiled, r: Rule) -> z3.BoolRef:
@@ -192,6 +203,8 @@ def _to_lit(c: Compiled, sort: Sort, v: z3.ExprRef) -> Lit:
         case IntSort():
             return IntLit(v.as_long())  # ty: ignore[unresolved-attribute] - an IntNumRef once evaluated
         case RealSort():
+            if z3.is_algebraic_value(v):  # an irrational value (e.g. the square root of 2): a close rational
+                v = v.approx(20)  # ty: ignore[unresolved-attribute] - an AlgebraicNumRef
             return RealLit(Fraction(v.as_fraction()))  # ty: ignore[unresolved-attribute] - a RatNumRef
         case EnumSort(sname, _):
             return EnumLit(sname, str(v).removeprefix(f"{sname}."))
@@ -206,22 +219,25 @@ def ground(c: Compiled, e: Expr, sort: Sort, env: Mapping[str, Lit]) -> Lit:
     return _to_lit(c, sort, z3.simplify(term))
 
 
+TRACK = "track!"  # tracking literals; "!" can't occur in a policy name, so they never collide with a variable
+
+
 def check(c: Compiled, assertions: Sequence[tuple[Label, Expr]], *, rules: bool = True) -> SatResult:
     """Satisfiability of the policy's rules (unless `rules=False`) together with `assertions`, each tracked by its
     label so an unsat core can be named."""
-    s = z3.Solver(ctx=c.ctx)
+    s = _solver(c)
     labels: list[Label] = []
     tracked = [*((RuleLabel(rid), f) for rid, f in c.rules.items() if rules),
                *((label, to_z3(c, e)) for label, e in assertions)]
     for i, (label, formula) in enumerate(tracked):
         labels.append(label)
-        s.assert_and_track(formula, z3.Bool(f"__track_{i}", c.ctx))
+        s.assert_and_track(formula, z3.Bool(f"{TRACK}{i}", c.ctx))
     match s.check():
         case z3.sat:
             m = s.model()
             return Sat({n: _to_lit(c, c.sorts[n], m.eval(v, model_completion=True)) for n, v in c.variables.items()})
         case z3.unsat:
-            return Unsat(frozenset(labels[int(str(t).removeprefix("__track_"))] for t in s.unsat_core()))
+            return Unsat(frozenset(labels[int(str(t).removeprefix(TRACK))] for t in s.unsat_core()))
         case _:
             return Unknown(s.reason_unknown())
 
@@ -238,7 +254,7 @@ def totality(c: Compiled, inputs: frozenset[str]) -> SatResult:
     rest = [r for r in c.policy.rules if r not in domain]
     others = [v for n, v in c.variables.items() if n not in inputs]
     no_answer = z3.Not(z3.And(*[c.rules[r.id] for r in rest], c.ctx), c.ctx)
-    s = z3.Solver(ctx=c.ctx)
+    s = _solver(c)
     s.add(*[c.rules[r.id] for r in domain])
     s.add(z3.ForAll(others, no_answer) if others else no_answer)
     match s.check():

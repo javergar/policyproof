@@ -71,6 +71,7 @@ type Atom = str | int | float | bool | None
 class Scalar:
     value: Atom
     pos: Pos | None = None
+    raw: str | None = None  # the text as written in YAML, when decoded from YAML
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,10 +133,33 @@ def from_yaml_text(text: str) -> Result[Tree, DecodeError]:
     except yaml.YAMLError as err:
         mark = getattr(err, "problem_mark", None)
         pos = Pos(mark.line + 1, mark.column + 1) if mark is not None else None
-        return Failure(DecodeError("", f"invalid YAML: {getattr(err, 'problem', err)}", pos))
+        problem = str(getattr(err, "problem", err))
+        hint = (" (inside { } or [ ], quote text that contains commas, colons or question marks)"
+                if "expected ','" in problem else "")
+        return Failure(DecodeError("", f"invalid YAML: {problem}{hint}", pos))
     if node is None:
         return Failure(DecodeError("", "the document is empty"))
-    return Success(_from_node(node))
+    tree = _from_node(node)
+    duplicate = _duplicate_key(tree, "")
+    return Failure(duplicate) if duplicate else Success(tree)
+
+
+def _duplicate_key(t: Tree, path: str) -> DecodeError | None:
+    """YAML allows repeated keys and keeps one silently; a policy must not."""
+    match t:
+        case Map(items, pos):
+            seen: set[str] = set()
+            for key, _ in items:
+                if key in seen:
+                    return DecodeError(path, f"duplicate key {key!r}", pos)
+                seen.add(key)
+            return next((d for k, v in items if (d := _duplicate_key(v, _join(path, k)))), None)
+        case Seq(items):
+            return next((d for i, x in enumerate(items) if (d := _duplicate_key(x, _join(path, i)))), None)
+        case Scalar():
+            return None
+        case _:
+            raise AssertionError("unreachable")
 
 
 def _from_node(node: yaml.Node) -> Tree:
@@ -145,7 +169,8 @@ def _from_node(node: yaml.Node) -> Tree:
     if isinstance(node, yaml.SequenceNode):
         return Seq(tuple(_from_node(x) for x in node.value), pos)
     value = yaml.SafeLoader("").construct_object(node, deep=True)
-    return Scalar(value if isinstance(value, str | int | float | bool) or value is None else str(value), pos)
+    atom = value if isinstance(value, str | int | float | bool) or value is None else str(value)
+    return Scalar(atom, pos, str(node.value))
 
 
 def _err(path: str, t: Tree, message: str) -> Failure[DecodeError]:
@@ -165,6 +190,9 @@ BINARY_BOOL = {"implies": Implies, "iff": Iff}
 
 def decode_expr(sig: Signature, t: Tree, path: str = "") -> Result[Expr, DecodeError]:
     match t:
+        case Scalar(bool(), _, raw) if raw is not None and raw.lower() not in ("true", "false"):
+            return _err(path, t, f"YAML reads {raw} as true/false: write true or false for a Boolean, or quote it "
+                                 f'("{raw}") for an enum value')
         case Scalar(bool() as b):
             return Success(BoolLit(b))
         case Scalar(int() as n):
@@ -315,8 +343,8 @@ def _known_keys(t: Map, path: str, allowed: set[str]) -> Result[Map, DecodeError
     if not extra:
         return Success(t)
     key, value = extra[0]
-    hint = " (a comma inside { } starts a new key: quote text that contains commas)" if value == Scalar(
-        None, value.pos) else ""
+    hint = (" (a comma inside { } starts a new key: quote text that contains commas)"
+            if isinstance(value, Scalar) and value.value is None else "")
     return _err(_join(path, key), t, f"unknown key {key!r}{hint}")
 
 

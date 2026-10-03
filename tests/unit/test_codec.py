@@ -98,3 +98,32 @@ def test_an_unquoted_comma_in_a_flow_map_is_a_positioned_error_not_a_crash():
     err = failure(head + "  - { id: R1, when: b, then: b }\n")
     assert isinstance(err, DecodeError) and err.pos == Pos(5, 6)
     assert err.message.startswith("unknown key 'or early' (a comma inside { } starts a new key")
+
+
+ANSWER = """policy: t
+version: "1"
+sorts: { Answer: ["YES", "NO"] }
+variables:
+  a: { sort: Answer, role: system }
+  b: { sort: Bool, role: derived }
+rules:
+"""
+
+
+def test_yaml_booleans_inside_expressions_ask_for_quotes():
+    err = failure(ANSWER + "  - { id: R1, when: { eq: [a, YES] }, then: b }\n")
+    assert isinstance(err, DecodeError) and err.path == "rules[0].when.eq[1]" and "quote it" in err.message
+    assert err.pos is not None and err.pos.line == 8
+    on = failure(ANSWER + "  - { id: R1, when: b, then: b }\noutcomes: { o: { b: ON } }\n")
+    assert isinstance(on, DecodeError) and on.path == "outcomes.o.b" and "quote it" in on.message
+
+
+def test_a_question_mark_in_a_flow_map_gets_a_hint():
+    head = TOY_HEAD.replace("b: { sort: Bool, role: derived }", "b: { sort: Bool, role: ask, question: Sure? }")
+    err = failure(head + "  - { id: R1, when: b, then: b }\n")
+    assert isinstance(err, DecodeError) and "quote" in err.message and err.pos is not None
+
+
+def test_duplicate_keys_are_errors_not_first_wins():
+    err = failure(TOY_HEAD + "  - { id: R1, when: b, then: b, then: { not: b } }\n")
+    assert isinstance(err, DecodeError) and err.path == "rules[0]" and "duplicate key 'then'" in err.message

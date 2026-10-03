@@ -4,7 +4,7 @@ from policyproof.core.decide import Contradiction, Decided, Escalate, NeedInfo, 
 from policyproof.core.explain import explain
 from policyproof.core.facts import Answered, Fact, FromSystem, Volunteered, facts
 from policyproof.core.solver import compile
-from policyproof.core.syntax import BoolLit, EnumLit, IntLit
+from policyproof.core.syntax import BoolLit, Cmp, EnumLit, IntLit, Var
 
 OPS = FromSystem("parcel tracking")
 YES = Answered("Would you like your money back?", "yes please")
@@ -113,3 +113,63 @@ def test_a_policy_without_outcomes_escalates():
     from policyproof.core.codec import from_yaml
     p = from_yaml(EDGE.split("outcomes:")[0]).unwrap()
     assert isinstance(decide(compile(p), facts(Fact("n", IntLit(5), OPS), Fact("bags", IntLit(2), YES))), Escalate)
+
+
+def test_facts_on_derived_variables_and_ill_typed_facts_are_rejected(toy):
+    from policyproof.core.decide import InvalidFacts
+    c = compile(toy)
+    for bad in (Fact("refund", BoolLit(True), Volunteered("I get a refund")),
+                Fact("nope", BoolLit(True), OPS),
+                Fact("wantsRefund", IntLit(1), YES),
+                Fact("carrier", EnumLit("Carrier", "PLANE"), OPS)):
+        assert isinstance(decide(c, facts(bad)), InvalidFacts), bad
+
+
+def test_a_volunteered_system_fact_never_decides(toy):
+    said = Fact("daysLate", IntLit(5), Volunteered("it was five days late"))
+    d = decide(compile(toy), facts(said, Fact("wantsRefund", BoolLit(True), YES)))
+    assert not isinstance(d, Decided)
+
+
+def test_contradicting_volunteered_statements_lead_to_a_question(toy):
+    d = decide(compile(toy), facts(sys("daysLate", IntLit(3)),
+                                   Fact("wantsRefund", BoolLit(True), Volunteered("refund please")),
+                                   Fact("wantsRefund", BoolLit(False), Volunteered("a voucher is fine"))))
+    assert isinstance(d, NeedInfo) and d.var == "wantsRefund" and d.reason == "confirm"
+
+
+def test_no_outcomes_escalates_before_asking():
+    from policyproof.core.codec import from_yaml
+    p = from_yaml(EDGE.split("outcomes:")[0]).unwrap()
+    assert isinstance(decide(compile(p), facts(Fact("n", IntLit(5), OPS))), Escalate)
+
+
+def test_an_int_question_is_asked_last():
+    from policyproof.core.codec import from_yaml
+    p = from_yaml("""policy: t
+version: "1"
+variables:
+  n: { sort: Int, role: ask, question: "How many?" }
+  b: { sort: Bool, role: ask, question: "B?" }
+  ok: { sort: Bool, role: derived }
+rules:
+  - { id: R1, when: { and: [{ gt: [n, 1] }, b] }, then: ok }
+outcomes:
+  ok: { ok: true }
+""").unwrap()
+    d = decide(compile(p), facts())
+    assert isinstance(d, NeedInfo) and d.var == "b"
+
+
+def test_an_outcome_the_solver_cant_settle_escalates_rather_than_skipping_to_the_next(toy, monkeypatch):
+    """Solver timing can't pin this down, so the first outcome's classification is replaced with a give-up."""
+    import policyproof.core.decide as decide_module
+    from policyproof.core.prove import Undetermined, classify
+
+    def gives_up_on_refund(c, claim, assertions=(), **kw):
+        return Undetermined("canceled") if claim == Cmp("eq", Var("refund"), BoolLit(True)) else classify(
+            c, claim, assertions, **kw)
+
+    monkeypatch.setattr(decide_module, "classify", gives_up_on_refund)
+    known = facts(sys("daysLate", IntLit(3)), Fact("wantsRefund", BoolLit(False), YES))
+    assert isinstance(decide(compile(toy), known), Escalate)

@@ -76,3 +76,11 @@ def test_check_policy_reports_every_problem():
                                   UnknownName("missing", "R1"), SortMismatch("Bool", INT, "outcomes.yes")}
         case _:
             raise AssertionError("expected a failure")
+
+
+def test_value_names_rule_ids_and_empty_sorts_are_rejected():
+    from policyproof.core.typecheck import BadName, EmptySort
+    bad = replace(BASE, sorts=(FARE, EnumSort("Odd", ("A|B",)), EnumSort("Empty", ())),
+                  rules=(When("R 1", BoolLit(True), Var("ok")),))
+    found = check_policy(bad).failure()
+    assert {BadName("Odd.A|B"), EmptySort("Empty"), BadName("R 1")} <= set(found)
