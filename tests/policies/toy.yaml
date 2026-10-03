@@ -1,0 +1,55 @@
+# A small policy that uses every feature of the format. Used by the unit and law tests.
+policy: toy-delivery
+version: "1.0"
+
+sorts:
+  Carrier: [POST, COURIER]
+
+variables:
+  daysLate: { sort: Int, role: system, description: Days the parcel arrived after the promised date. }
+  carrier: { sort: Carrier, role: system, description: Who delivered the parcel. }
+  wantsRefund:
+    sort: Bool
+    role: ask
+    question: Would you like your money back?
+    description: True if the customer wants a refund rather than a voucher.
+  isLate: { sort: Bool, role: derived, description: Late enough to be compensated. }
+  refund: { sort: Bool, role: derived, description: The customer gets a refund. }
+  voucher: { sort: Bool, role: derived, description: The customer gets a voucher. }
+
+rules:
+  - id: T1
+    source: clause 1
+    define:
+      var: isLate
+      as:
+        or:
+          - ge: [daysLate, 2]
+          - and:
+              - eq: [carrier, COURIER]
+              - ge: [daysLate, 1]
+    explain: Late means 2 or more days late, or 1 day for a courier.
+  - id: T2
+    source: clause 2
+    when: { and: [isLate, wantsRefund] }
+    then: refund
+  - id: T3
+    source: clause 2
+    when: { and: [isLate, { not: wantsRefund }] }
+    then: voucher
+  - id: T4
+    source: clause 3
+    when: { not: isLate }
+    then: { and: [{ not: refund }, { not: voucher }] }
+  - id: T5
+    source: clause 4
+    when: refund
+    then: { not: voucher }
+  - id: T6
+    constraint: { ge: [daysLate, 0] }
+    explain: A parcel is never early-late.
+
+outcomes:
+  refund: { refund: true }
+  voucher: { voucher: true }
+  nothing: { refund: false, voucher: false }
