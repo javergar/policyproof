@@ -15,7 +15,7 @@ from typing import assert_never, cast
 import z3
 
 from policyproof.core.render import smt_name
-from policyproof.core.semantics import rule_expr
+from policyproof.core.semantics import free_vars, rule_expr
 from policyproof.core.syntax import (
     And,
     Arith,
@@ -229,3 +229,24 @@ def check(c: Compiled, assertions: Sequence[tuple[Label, Expr]], *, rules: bool 
 def fact(var: str, value: Lit) -> tuple[Label, Expr]:
     """The tracked assertion `var == value`."""
     return FactLabel(var, value), Cmp("eq", Var(var), value)
+
+
+def totality(c: Compiled, inputs: frozenset[str]) -> SatResult:
+    """`Sat(witness)` when some values of `inputs` that meet the rules about inputs alone leave no values of the
+    other variables that meet every rule: the policy has no answer for that case. `Unsat` when it always has one."""
+    domain = [r for r in c.policy.rules if free_vars(rule_expr(r)) <= inputs]
+    rest = [r for r in c.policy.rules if r not in domain]
+    others = [v for n, v in c.variables.items() if n not in inputs]
+    no_answer = z3.Not(z3.And(*[c.rules[r.id] for r in rest], c.ctx), c.ctx)
+    s = z3.Solver(ctx=c.ctx)
+    s.add(*[c.rules[r.id] for r in domain])
+    s.add(z3.ForAll(others, no_answer) if others else no_answer)
+    match s.check():
+        case z3.sat:
+            m = s.model()
+            witness = {n: _to_lit(c, c.sorts[n], m.eval(c.variables[n], model_completion=True)) for n in sorted(inputs)}
+            return Sat(witness)
+        case z3.unsat:
+            return Unsat(frozenset())
+        case _:
+            return Unknown(s.reason_unknown())

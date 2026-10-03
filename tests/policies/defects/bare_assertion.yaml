@@ -1,0 +1,13 @@
+# The lab's Bedrock build bug: a bare assertion silently made one category impossible.
+policy: defect-bare-assertion
+version: "1"
+sorts:
+  ItemCategory: [PHONES, LAPTOPS, OTHER]
+variables:
+  itemCategory: { sort: ItemCategory, role: system }
+  refund: { sort: Bool, role: derived }
+rules:
+  - { id: B1, constraint: { ne: [itemCategory, OTHER] } }
+  - { id: B2, when: { eq: [itemCategory, PHONES] }, then: refund }
+outcomes:
+  refund: { refund: true }

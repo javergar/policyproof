@@ -1,0 +1,15 @@
+# The demo's R4/R8 bug in miniature: outside our control gives credit, cooling-off gives a refund, never both.
+policy: defect-not-total
+version: "1"
+variables:
+  outsideControl: { sort: Bool, role: system }
+  coolingOff: { sort: Bool, role: system }
+  refund: { sort: Bool, role: derived }
+  credit: { sort: Bool, role: derived }
+rules:
+  - { id: R4, when: outsideControl, then: credit }
+  - { id: R8, when: coolingOff, then: refund }
+  - { id: R10, when: refund, then: { not: credit } }
+outcomes:
+  refund: { refund: true }
+  credit: { credit: true }

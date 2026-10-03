@@ -1,0 +1,13 @@
+# The lab's chunked-extraction bug: one idea under two names, so the rules never meet.
+policy: defect-near-duplicate
+version: "1"
+variables:
+  clearance: { sort: Bool, role: ask, question: "Was it bought on clearance?" }
+  isFinalSale: { sort: Bool, role: derived }
+  finalSale: { sort: Bool, role: derived }
+  refund: { sort: Bool, role: derived }
+rules:
+  - { id: C1, when: clearance, then: isFinalSale }
+  - { id: C2, when: { not: finalSale }, then: refund }
+outcomes:
+  refund: { refund: true }

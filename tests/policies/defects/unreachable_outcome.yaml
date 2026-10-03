@@ -1,0 +1,12 @@
+policy: defect-unreachable-outcome
+version: "1"
+variables:
+  late: { sort: Bool, role: system }
+  refund: { sort: Bool, role: derived }
+  credit: { sort: Bool, role: derived }
+rules:
+  - { id: U1, when: late, then: refund }
+  - { id: U2, constraint: { not: credit } }
+outcomes:
+  refund: { refund: true }
+  credit: { credit: true }

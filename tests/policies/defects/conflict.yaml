@@ -1,0 +1,8 @@
+policy: defect-conflict
+version: "1"
+variables:
+  a: { sort: Bool, role: derived }
+  unused: { sort: Int, role: system }
+rules:
+  - { id: K1, when: true, then: a }
+  - { id: K2, when: true, then: { not: a } }
