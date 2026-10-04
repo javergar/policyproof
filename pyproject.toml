@@ -37,7 +37,8 @@ allowed-confusables = ["−", "×", "∨"]  # used on purpose in pretty-printed 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not live'"
+markers = ["live: calls real models; needs credentials (run with -m live)"]
 
 [tool.importlinter]
 root_package = "policyproof"
