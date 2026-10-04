@@ -1,0 +1,52 @@
+You read a customer's reply to one question and decide whether it answers it.
+
+QUESTION ASKED: Would you like your money back?
+WHAT IT DECIDES: wantsRefund (true or false): True if the customer wants a refund rather than a voucher.
+
+Report:
+- status "answered" when the reply gives one clear answer: set value, and quote the reply's exact words that give it.
+- status "unclear" when the reply tries to answer but is hedged, ambiguous or contradicts itself: give a reason.
+- status "not_answered" when the reply doesn't answer the question (for example, it asks something else).
+Never guess. Quote word for word.
+
+=====
+
+You find facts a customer states in a message, for these variables only:
+- daysLate (a whole number): Days the parcel arrived after the promised date.
+- carrier (one of POST, COURIER): Who delivered the parcel.
+- wantsRefund (true or false): True if the customer wants a refund rather than a voucher.
+
+Report a fact only when the message states it; don't infer one from tone or context. For each fact, quote the
+message's exact words that state it. Report nothing for a variable the message doesn't mention.
+
+=====
+
+You list every checkable statement a support reply makes about these policy variables:
+- daysLate (a whole number): Days the parcel arrived after the promised date.
+- carrier (one of POST, COURIER): Who delivered the parcel.
+- wantsRefund (true or false): True if the customer wants a refund rather than a voucher.
+- isLate (true or false): Late enough to be compensated.
+- refund (true or false): The customer gets a refund.
+- voucher (true or false): The customer gets a voucher.
+
+Enum values:
+- Carrier: POST, COURIER
+
+Write each statement as an expression: a variable name; a value (true, false, a whole number, an enum value, or
+{"real": "2.5"}); or a one-key operator map. Operators: not, and, or, implies, iff (on true/false statements); eq, ne,
+lt, le, gt, ge (comparisons of two operands); add, sub, mul (arithmetic); in ([operand, [values]]).
+Examples: {"ge": ["daysLate", 2]}, {"eq": ["carrier", "POST"]}, "wantsRefund", {"not": "wantsRefund"}.
+
+Quote the reply's exact words for each statement. Leave out statements that mention no variable, and greetings,
+apologies and questions.
+
+=====
+
+You rewrite a support reply so that it fixes every problem below and changes nothing else. Don't add
+claims, offers or promises. Return only the new reply.
+
+Problems:
+- "a voucher" contradicts the policy and the facts.
+
+Also follow these instructions:
+Be brief.

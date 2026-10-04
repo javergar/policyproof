@@ -9,16 +9,16 @@ requires-python = ">=3.13"
 dependencies = ["z3-solver>=4.15", "returns>=0.29", "pyyaml>=6"]
 
 [project.optional-dependencies]
-# Declared now so the names are reserved; each is filled by a later milestone.
-anthropic = []
-bedrock = []
-openai = []
-jev = []
+# Readers for any chat model pydantic-ai supports; add your provider's extra too, e.g. pydantic-ai-slim[bedrock].
+llm = ["pydantic-ai-slim>=2.54"]
+jev = ["pydantic-ai-slim[typesafe]>=2.54"]
+# Reserved for later milestones.
 extract = []
 bedrock-ar = []
 
 [dependency-groups]
-dev = ["pytest>=8", "hypothesis>=6", "ty", "ruff", "import-linter>=2", "jsonschema>=4", "types-pyyaml"]
+dev = ["pytest>=8", "hypothesis>=6", "ty", "ruff", "import-linter>=2", "jsonschema>=4", "types-pyyaml",
+       "pydantic-ai-slim[bedrock,typesafe]>=2.54"]
 
 [build-system]
 requires = ["uv_build>=0.12.22,<0.13.0"]
