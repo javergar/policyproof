@@ -4,12 +4,16 @@ from hypothesis import given
 from hypothesis import strategies as st
 from returns.result import Success
 
-from policyproof.core.facts import Answered, Quoted, Scored, Volunteered, all_facts
+from policyproof.core.decide import decide
+from policyproof.core.facts import Answered, Fact, FromSystem, Quoted, Scored, Volunteered, all_facts
+from policyproof.core.facts import facts as make_facts
 from policyproof.core.semantics import free_vars
-from policyproof.core.syntax import BOOL, Derived
+from policyproof.core.solver import compile
+from policyproof.core.syntax import BOOL, BoolLit, Derived, IntLit
 from policyproof.core.typecheck import signature, sort_of
 from policyproof.guards import answer, claims, facts
 from policyproof.guards.raw import NotAnswered, RawClaim, RawFact, Said, Unclear
+from policyproof.guards.robust import decide_robustly
 from policyproof.guards.values import in_text
 
 TOY = load("toy.yaml")
@@ -64,3 +68,18 @@ def test_e2_an_accepted_answer_is_verified(message, raw):
     if isinstance(got, answer.Answer):
         assert isinstance(got.fact.provenance, Answered) and in_text(got.fact.provenance.quote, message)
         assert sort_of(SIG, got.fact.value) == Success(BOOL)
+
+
+COMPILED = compile(TOY)
+FIRM_PROVENANCE = st.one_of(st.just(FromSystem("s")), st.builds(Answered, st.just("q"), st.just("a")),
+                            st.builds(Volunteered, st.builds(Quoted, st.just("a"))),
+                            st.builds(Volunteered, st.builds(Scored, st.floats(0.8, 1))))
+FIRM_FACTS = st.lists(st.one_of(
+    st.builds(Fact, st.just("daysLate"), st.integers(0, 4).map(IntLit), FIRM_PROVENANCE),
+    st.builds(Fact, st.just("wantsRefund"), st.booleans().map(BoolLit), FIRM_PROVENANCE),
+), max_size=4).map(lambda fs: make_facts(*fs))
+
+
+@given(FIRM_FACTS)
+def test_e5_without_weak_facts_decide_robustly_is_decide(fs):
+    assert decide_robustly(COMPILED, fs) == decide(COMPILED, fs)
