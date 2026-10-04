@@ -1,0 +1,8 @@
+# The smallest policy with a Real variable. Used by the guard and prompt tests.
+policy: weights
+version: "1"
+variables:
+  kg: { sort: Real, role: ask, question: "How heavy is it?", description: Weight in kilograms. }
+  heavy: { sort: Bool, role: derived, description: Over the limit. }
+rules:
+  - { id: W1, define: { var: heavy, as: { gt: [kg, { real: "23.5" }] } } }
