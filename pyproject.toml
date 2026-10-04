@@ -63,3 +63,8 @@ source_modules = ["policyproof.effects.errors", "policyproof.effects.ports", "po
                   "policyproof.effects.pipeline"]
 forbidden_modules = ["policyproof.effects.llm", "policyproof.effects.jev", "pydantic", "pydantic_ai", "boto3",
                      "botocore", "typesafe_sdk", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "The LLM and Jev readers are independent"
+type = "independence"
+modules = ["policyproof.effects.llm", "policyproof.effects.jev"]
