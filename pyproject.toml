@@ -47,4 +47,18 @@ include_external_packages = true
 name = "The core is pure: no effects, no SDKs"
 type = "forbidden"
 source_modules = ["policyproof.core"]
-forbidden_modules = ["policyproof.effects", "boto3", "botocore", "anthropic", "openai", "langextract", "typesafe", "httpx", "requests"]
+forbidden_modules = ["policyproof.effects", "policyproof.guards", "boto3", "botocore", "anthropic", "openai", "langextract",
+                     "typesafe", "typesafe_sdk", "pydantic", "pydantic_ai", "httpx", "requests"]
+
+[[tool.importlinter.contracts]]
+name = "Guards are pure: the core only"
+type = "forbidden"
+source_modules = ["policyproof.guards"]
+forbidden_modules = ["policyproof.effects", "pydantic", "pydantic_ai", "boto3", "botocore", "typesafe_sdk", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "Ports, consensus and pipelines need no provider SDK"
+type = "forbidden"
+source_modules = ["policyproof.effects.errors", "policyproof.effects.ports", "policyproof.effects.consensus"]
+forbidden_modules = ["policyproof.effects.llm", "policyproof.effects.jev", "pydantic", "pydantic_ai", "boto3",
+                     "botocore", "typesafe_sdk", "httpx"]
