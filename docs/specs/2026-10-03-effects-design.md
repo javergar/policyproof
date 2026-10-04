@@ -413,3 +413,36 @@ milestone 1's fail-closed ruling.
 - Whether the bare `real` sort can be asked of Jev as a Score; deferred.
 - Per-value phrasings in the policy format for better Jev option descriptions: an M3 decision, made with the
   evaluation harness.
+
+## Refinements from prototyping the plan (2026-10-04)
+
+Decisions made while building the plan's prototype. Each is reflected in the plan (`docs/plans/2026-10-04-effects.md`).
+
+- **The raw types live in `guards/raw.py`** and `effects.ports` re-exports them. The guards take them as input and
+  may import only the core.
+- **Quotes match after the core's `normalize`** (lowercase, punctuation collapsed), as whole words (`guards.values.
+  in_text`), so `I’d` matches `I'd`. This replaces the case-sensitive matching above, so one rule holds everywhere.
+- **The opening words are the demo's lists:** `yes|yeah|yep|yup|sure|correct|that's right|that is right` and
+  `no|nope|nah|not really`, matched at the start of the message.
+- **`literal_for`** reads Booleans from `true`/`false` strings too (Jev's options), enum values as `VALUE` or
+  `Sort.VALUE` in any case when that is unambiguous, and reals from ints or `{"real": ...}`, never floats.
+- **`decide_robustly`** compares what the two decisions conclude (the outcome, or the variable asked), not the whole
+  `Decision`, so a weak fact that only appears in `facts_used` doesn't cause a confirmation. Weak facts that nobody
+  can be asked about (volunteered facts about system variables, which the fact guard allows) are ignored: it decides
+  without them. It and `template` also handle `InvalidFacts`.
+- **Consensus compares values as policy literals,** so Jev's `"true"` agrees with an LLM's `True`. The pure functions
+  (`agree_facts`, `agree_answers`) therefore take the policy. Two `Unclear` answers give the first one.
+- **`guard_reply` turns rejected claims into problems** under the rule name `claims_readable`, so they reach the
+  rewriter.
+- **When retries run out, an LLM answer is `Unclear`, not `Malformed`,** so the question is asked again rather than
+  the turn failing. Facts and claims stay `Malformed`.
+- **The LLM output types are static models** (`value: bool | int | str | Real`), not built per variable; the guard
+  and one retry enforce the variable's sort, and ty can check the code. Jev still builds its types per policy,
+  because its questions come from them.
+- **Jev's fields are named `f0`, `f1`, ... with the variable names as aliases,** so a variable named like a pydantic
+  attribute (`model_config`) still works. A policy with nothing Jev can ask makes no call, and a number answer is
+  `Refused`, so `AgreeingAnswers` uses the other reader.
+- **Prompt examples use the policy's own variable names,** with `{"real": "2.5"}` for Real variables.
+- **Tests run async code with `asyncio.run`;** no pytest-asyncio. Live tests need `PP_BEDROCK_MODEL` (an inference
+  profile ID) and AWS credentials, or `TYPESAFE_API_KEY`, and are excluded from the default run.
+- **`tests/policies/weights.yaml`** is the smallest policy with a Real variable, for the guard and prompt tests.
