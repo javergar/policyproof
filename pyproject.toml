@@ -59,6 +59,7 @@ forbidden_modules = ["policyproof.effects", "pydantic", "pydantic_ai", "boto3", 
 [[tool.importlinter.contracts]]
 name = "Ports, consensus and pipelines need no provider SDK"
 type = "forbidden"
-source_modules = ["policyproof.effects.errors", "policyproof.effects.ports", "policyproof.effects.consensus"]
+source_modules = ["policyproof.effects.errors", "policyproof.effects.ports", "policyproof.effects.consensus",
+                  "policyproof.effects.pipeline"]
 forbidden_modules = ["policyproof.effects.llm", "policyproof.effects.jev", "pydantic", "pydantic_ai", "boto3",
                      "botocore", "typesafe_sdk", "httpx"]
