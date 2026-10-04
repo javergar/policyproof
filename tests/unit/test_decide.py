@@ -2,7 +2,7 @@ import z3
 
 from policyproof.core.decide import Contradiction, Decided, Escalate, NeedInfo, decide
 from policyproof.core.explain import explain
-from policyproof.core.facts import Answered, Fact, FromSystem, Volunteered, facts
+from policyproof.core.facts import Answered, Fact, FromSystem, Quoted, Scored, Volunteered, facts
 from policyproof.core.solver import compile
 from policyproof.core.syntax import BoolLit, Cmp, EnumLit, IntLit, Var
 
@@ -33,7 +33,13 @@ def test_asks_the_question_that_settles_it(toy):
 
 
 def test_a_volunteered_fact_is_confirmed_before_it_decides(toy):
-    said = Fact("wantsRefund", BoolLit(True), Volunteered("I just want my money back"))
+    said = Fact("wantsRefund", BoolLit(True), Volunteered(Quoted("I just want my money back")))
+    d = decide(compile(toy), facts(sys("daysLate", IntLit(3)), said))
+    assert isinstance(d, NeedInfo) and d.var == "wantsRefund" and d.reason == "confirm"
+
+
+def test_a_scored_volunteered_fact_is_confirmed_like_a_quoted_one(toy):
+    said = Fact("wantsRefund", BoolLit(True), Volunteered(Scored(0.97)))
     d = decide(compile(toy), facts(sys("daysLate", IntLit(3)), said))
     assert isinstance(d, NeedInfo) and d.var == "wantsRefund" and d.reason == "confirm"
 
@@ -118,7 +124,7 @@ def test_a_policy_without_outcomes_escalates():
 def test_facts_on_derived_variables_and_ill_typed_facts_are_rejected(toy):
     from policyproof.core.decide import InvalidFacts
     c = compile(toy)
-    for bad in (Fact("refund", BoolLit(True), Volunteered("I get a refund")),
+    for bad in (Fact("refund", BoolLit(True), Volunteered(Quoted("I get a refund"))),
                 Fact("nope", BoolLit(True), OPS),
                 Fact("wantsRefund", IntLit(1), YES),
                 Fact("carrier", EnumLit("Carrier", "PLANE"), OPS)):
@@ -126,15 +132,15 @@ def test_facts_on_derived_variables_and_ill_typed_facts_are_rejected(toy):
 
 
 def test_a_volunteered_system_fact_never_decides(toy):
-    said = Fact("daysLate", IntLit(5), Volunteered("it was five days late"))
+    said = Fact("daysLate", IntLit(5), Volunteered(Quoted("it was five days late")))
     d = decide(compile(toy), facts(said, Fact("wantsRefund", BoolLit(True), YES)))
     assert not isinstance(d, Decided)
 
 
 def test_contradicting_volunteered_statements_lead_to_a_question(toy):
     d = decide(compile(toy), facts(sys("daysLate", IntLit(3)),
-                                   Fact("wantsRefund", BoolLit(True), Volunteered("refund please")),
-                                   Fact("wantsRefund", BoolLit(False), Volunteered("a voucher is fine"))))
+                                   Fact("wantsRefund", BoolLit(True), Volunteered(Quoted("refund please"))),
+                                   Fact("wantsRefund", BoolLit(False), Volunteered(Quoted("a voucher is fine")))))
     assert isinstance(d, NeedInfo) and d.var == "wantsRefund" and d.reason == "confirm"
 
 

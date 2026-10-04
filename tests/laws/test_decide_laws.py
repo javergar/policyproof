@@ -4,7 +4,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from policyproof.core.decide import Contradiction, Decided, NeedInfo, decide
-from policyproof.core.facts import Answered, Fact, FromSystem, Volunteered, facts, merge
+from policyproof.core.facts import Answered, Fact, FromSystem, Quoted, Scored, Volunteered, facts, merge
 from policyproof.core.solver import compile
 from policyproof.core.syntax import BoolLit, EnumLit, IntLit
 
@@ -29,8 +29,9 @@ def test_l8_a_decision_survives_more_facts(world, f_names, more):
         assert isinstance(after, Decided) and after.outcome == before.outcome
 
 
+EVIDENCE = st.one_of(st.builds(Quoted, st.sampled_from("ab")), st.builds(Scored, st.sampled_from([0.3, 0.9])))
 PROVENANCE = st.one_of(st.just(FromSystem("s")), st.builds(Answered, st.sampled_from("qr"), st.sampled_from("ab")),
-                       st.builds(Volunteered, st.sampled_from("ab")))
+                       st.builds(Volunteered, EVIDENCE))
 FACT_SETS = st.lists(st.builds(Fact, st.sampled_from("xyz"), st.integers(0, 2).map(IntLit), PROVENANCE),
                      max_size=5).map(lambda fs: facts(*fs))
 

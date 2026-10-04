@@ -27,8 +27,23 @@ class Answered:
 
 
 @dataclass(frozen=True, slots=True)
+class Quoted:
+    """The exact words of the message the fact was read from."""
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class Scored:
+    """A reader's confidence (0 to 1) in a fact it can't quote, e.g. Jev's."""
+    confidence: float
+
+
+type Evidence = Quoted | Scored
+
+
+@dataclass(frozen=True, slots=True)
 class Volunteered:
-    quote: str
+    evidence: Evidence
 
 
 type Provenance = FromSystem | Answered | Volunteered

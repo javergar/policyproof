@@ -11,7 +11,7 @@ import pytest
 from conftest import load
 
 from policyproof.core.decide import Contradiction, Decided, Escalate, NeedInfo, decide
-from policyproof.core.facts import Answered, Fact, FromSystem, Volunteered, facts
+from policyproof.core.facts import Answered, Fact, FromSystem, Quoted, Volunteered, facts
 from policyproof.core.solver import compile
 from policyproof.core.syntax import BoolLit, BoolSort, EnumLit, EnumSort, IntLit, IntSort, Lit, Sort
 
@@ -54,7 +54,8 @@ def test_same_decision_as_the_demo(demo, ref, label, answer):
         how, value = answer
         customer = {"wantsToTravel": value}
         asked = ("wantsToTravel",) if how == "answer" else ()
-        provenance = Answered("Do you still want to take this trip?", "...") if how == "answer" else Volunteered("...")
+        provenance = (Answered("Do you still want to take this trip?", "...") if how == "answer"
+                      else Volunteered(Quoted("...")))
         known.append(Fact("wantsToTravel", BoolLit(value), provenance))
 
     theirs = core.decide(demo_policy, system, customer, asked)
