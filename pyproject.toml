@@ -73,5 +73,5 @@ modules = ["policyproof.effects.llm", "policyproof.effects.jev"]
 [[tool.importlinter.contracts]]
 name = "Eval cases, grading and reports are pure: the core and guards only"
 type = "forbidden"
-source_modules = ["policyproof.eval.cases"]
+source_modules = ["policyproof.eval.cases", "policyproof.eval.grade"]
 forbidden_modules = ["policyproof.effects", "pydantic", "pydantic_ai", "boto3", "botocore", "typesafe_sdk", "httpx"]
