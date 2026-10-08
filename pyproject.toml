@@ -75,3 +75,10 @@ name = "Eval cases, grading and reports are pure: the core and guards only"
 type = "forbidden"
 source_modules = ["policyproof.eval.cases", "policyproof.eval.grade", "policyproof.eval.report"]
 forbidden_modules = ["policyproof.effects", "pydantic", "pydantic_ai", "boto3", "botocore", "typesafe_sdk", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "The eval runner needs no provider SDK"
+type = "forbidden"
+source_modules = ["policyproof.eval.run"]
+forbidden_modules = ["policyproof.effects.llm", "policyproof.effects.jev", "pydantic", "pydantic_ai", "boto3",
+                     "botocore", "typesafe_sdk", "httpx"]
