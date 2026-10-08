@@ -3,11 +3,11 @@ import json
 import os
 from pathlib import Path
 
-from conftest import load
+from conftest import POLICIES, load
 from returns.result import Success
 
 from policyproof.core.check import Problem
-from policyproof.core.codec import decode_expr, from_data
+from policyproof.core.codec import decode_expr, from_data, from_yaml
 from policyproof.core.syntax import BOOL
 from policyproof.core.typecheck import signature, sort_of
 from policyproof.effects.llm.prompts import answer_prompt, claims_prompt, examples, facts_prompt, rewrite_prompt
@@ -40,3 +40,18 @@ def test_every_example_is_a_well_typed_statement(toy):
         for data in json.loads(f"[{examples(p)}]"):
             e = from_data(data).bind(lambda t, sig=sig: decode_expr(sig, t)).unwrap()
             assert sort_of(sig, e) == Success(BOOL), data
+
+
+PHRASED = (POLICIES / "toy.yaml").read_text().replace(
+    "    description: True if the customer wants a refund rather than a voucher.\n",
+    "    description: True if the customer wants a refund rather than a voucher.\n"
+    "    phrasings:\n      true: [money back, a refund]\n      false: [a voucher is fine]\n")
+SAID = 'said as: true: "money back", "a refund"; false: "a voucher is fine"'
+
+
+def test_phrasings_reach_the_answer_and_facts_prompts_only():
+    p = from_yaml(PHRASED).unwrap()
+    assert SAID in answer_prompt(p, "wantsRefund")
+    assert f"- wantsRefund (true or false): True if the customer wants a refund rather than a voucher.\n  {SAID}" in (
+        facts_prompt(p))
+    assert "said as" not in claims_prompt(p)

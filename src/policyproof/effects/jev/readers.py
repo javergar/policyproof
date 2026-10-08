@@ -21,7 +21,20 @@ from returns.result import Failure, Result, Success
 
 from policyproof.core._result import unreachable
 from policyproof.core.facts import Scored
-from policyproof.core.syntax import Ask, BoolSort, CheckedPolicy, Derived, EnumSort, IntSort, RealSort, Sort, Variable
+from policyproof.core.syntax import (
+    Ask,
+    BoolLit,
+    BoolSort,
+    CheckedPolicy,
+    Derived,
+    EnumLit,
+    EnumSort,
+    IntSort,
+    Lit,
+    RealSort,
+    Sort,
+    Variable,
+)
 from policyproof.effects.errors import LLMError, Malformed, Refused, Unavailable
 from policyproof.effects.ports import NotAnswered, RawAnswer, RawFact, Said, Unclear
 
@@ -31,11 +44,17 @@ NOT_STATED, UNCLEAR, NOT_ANSWERED = "not_stated", "unclear", "not_answered"
 def options(v: Variable) -> dict[str, str] | None:
     """The variable's values as described pick-one options, or None if it can't be asked as one."""
     s: Sort = v.sort
+    said = dict(v.phrasings)
+
+    def eg(lit: Lit) -> str:
+        texts = said.get(lit)
+        return " e.g. " + ", ".join(f'"{t}"' for t in texts) if texts else ""
     match s:
         case BoolSort():
-            return {"true": f"Yes: {v.description}", "false": f"No, the opposite: {v.description}"}
-        case EnumSort(_, values):
-            return {x: f"{v.description}: {x}" for x in values}
+            return {"true": f"Yes: {v.description}{eg(BoolLit(True))}",
+                    "false": f"No, the opposite: {v.description}{eg(BoolLit(False))}"}
+        case EnumSort(name, values):
+            return {x: f"{v.description}: {x}{eg(EnumLit(name, x))}" for x in values}
         case IntSort() | RealSort():
             return None
         case _:

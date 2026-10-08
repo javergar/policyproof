@@ -21,7 +21,7 @@ from typesafe_sdk import AsyncTypeSafeClient
 from policyproof.core.codec import from_yaml
 from policyproof.core.facts import Scored
 from policyproof.effects.errors import Refused, Unavailable
-from policyproof.effects.jev.readers import JevReaders
+from policyproof.effects.jev.readers import JevReaders, options
 from policyproof.effects.ports import AnswerReader, FactReader, NotAnswered, RawFact, Said, Unclear
 
 
@@ -114,3 +114,14 @@ def test_jev_refuses_number_answers_so_consensus_uses_the_other_reader():
     jev = Offline(ModelAPIError("jev", "must not be called"))
     got = asyncio.run(JevReaders(jev).read_answer(load("weights.yaml"), "kg", "About 30 kg"))
     assert isinstance(got.failure(), Refused)
+
+
+def test_phrasings_describe_jev_options():
+    text = (POLICIES / "toy.yaml").read_text().replace(
+        "    description: True if the customer wants a refund rather than a voucher.\n",
+        "    description: True if the customer wants a refund rather than a voucher.\n"
+        "    phrasings:\n      true: [money back, a refund]\n")
+    v = next(x for x in from_yaml(text).unwrap().variables if x.name == "wantsRefund")
+    found = options(v)
+    assert found is not None
+    assert found["true"].endswith('e.g. "money back", "a refund"') and "e.g." not in found["false"]

@@ -3,7 +3,22 @@ from collections.abc import Iterable
 from typing import assert_never
 
 from policyproof.core.check import Problem
-from policyproof.core.syntax import Ask, BoolSort, Derived, EnumSort, IntSort, Policy, RealSort, Sort, Variable
+from policyproof.core.syntax import (
+    Ask,
+    BoolLit,
+    BoolSort,
+    Derived,
+    EnumLit,
+    EnumSort,
+    IntLit,
+    IntSort,
+    Lit,
+    Policy,
+    RealLit,
+    RealSort,
+    Sort,
+    Variable,
+)
 
 
 def values_of(s: Sort) -> str:
@@ -20,8 +35,33 @@ def values_of(s: Sort) -> str:
             assert_never(s)
 
 
-def describe(vs: Iterable[Variable]) -> str:
-    return "\n".join(f"- {v.name} ({values_of(v.sort)}): {v.description}" for v in vs)
+def value_text(lit: Lit) -> str:
+    match lit:
+        case BoolLit(b):
+            return "true" if b else "false"
+        case IntLit(n):
+            return str(n)
+        case RealLit(q):
+            return str(q)
+        case EnumLit(_, value):
+            return value
+        case _:
+            assert_never(lit)
+
+
+def said_as(v: Variable) -> str:
+    """The variable's phrasings as one line (`said as: true: "money back"; false: ...`), or "" without any."""
+    if not v.phrasings:
+        return ""
+    return "said as: " + "; ".join(f"{value_text(lit)}: " + ", ".join(f'"{t}"' for t in texts)
+                                   for lit, texts in v.phrasings)
+
+
+def describe(vs: Iterable[Variable], *, phrasings: bool = False) -> str:
+    def line(v: Variable) -> str:
+        head = f"- {v.name} ({values_of(v.sort)}): {v.description}"
+        return f"{head}\n  {said_as(v)}" if phrasings and v.phrasings else head
+    return "\n".join(line(v) for v in vs)
 
 
 def examples(p: Policy) -> str:
@@ -45,10 +85,11 @@ def examples(p: Policy) -> str:
 def answer_prompt(p: Policy, var: str) -> str:
     v = next(x for x in p.variables if x.name == var)
     assert isinstance(v.role, Ask)
+    said = f"\n{said_as(v)}" if v.phrasings else ""
     return f"""You read a customer's reply to one question and decide whether it answers it.
 
 QUESTION ASKED: {v.role.question}
-WHAT IT DECIDES: {v.name} ({values_of(v.sort)}): {v.description}
+WHAT IT DECIDES: {v.name} ({values_of(v.sort)}): {v.description}{said}
 
 Report:
 - status "answered" when the reply gives one clear answer: set value, and quote the reply's exact words that give it.
@@ -60,7 +101,7 @@ Never guess. Quote word for word."""
 def facts_prompt(p: Policy) -> str:
     asked = [v for v in p.variables if not isinstance(v.role, Derived)]
     return f"""You find facts a customer states in a message, for these variables only:
-{describe(asked)}
+{describe(asked, phrasings=True)}
 
 Report a fact only when the message states it; don't infer one from tone or context. For each fact, quote the
 message's exact words that state it. Report nothing for a variable the message doesn't mention."""
