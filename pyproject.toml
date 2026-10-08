@@ -8,6 +8,9 @@ authors = [{ name = "javergar", email = "jose.vergara@gmail.com" }]
 requires-python = ">=3.13"
 dependencies = ["z3-solver>=4.15", "returns>=0.29", "pyyaml>=6"]
 
+[project.scripts]
+policyproof = "policyproof.eval.cli:entry"
+
 [project.optional-dependencies]
 # Readers for any chat model pydantic-ai supports; add your provider's extra too, e.g. pydantic-ai-slim[bedrock].
 llm = ["pydantic-ai-slim>=2.54"]
