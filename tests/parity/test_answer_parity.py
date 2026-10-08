@@ -11,6 +11,7 @@ from policyproof.guards.raw import Said, Unclear
 @pytest.mark.parametrize(("reply", "lead"), [
     ("No, I'll make other plans. I don't want to travel any more.", False),
     ("Yes, that's right, please cancel it.", True),
+    ("That\u2019s right, cancel it", True),
     ("Nope", False), ("yeah go ahead", True), ("I'd rather not, honestly", None), ("Noted, thanks", None),
 ])
 def test_opening_word(reply, lead):

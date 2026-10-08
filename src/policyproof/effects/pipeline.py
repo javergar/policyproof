@@ -82,6 +82,12 @@ async def read_turn(c: Compiled, state: Conversation, message: str, r: Readers, 
     match raw_facts:
         case Success(found):
             said, rejected = facts.check(p, message, found, min_confidence=min_confidence)
+            if state.pending is not None and state.pending.var in said:
+                # The answer reader is the authority on the variable just asked about: a volunteered reading of it
+                # must not decide what the answer guard found unclear.
+                var = state.pending.var
+                said = {k: v for k, v in said.items() if k != var}
+                rejected = (*rejected, Rejected(var, "read as the answer to the question asked, not as a fact"))
             known = merge(known, said)
         case Failure(e):
             degraded = (e,)
@@ -155,6 +161,8 @@ async def guard_reply(c: Compiled, fs: Facts, decision: Decision, draft: str, re
     match await rewriter.rewrite(draft, first.problems, instructions):
         case Failure(e):
             return fall_back(1, first, describe(e))
+        case Success(rewrite) if not rewrite.strip():
+            return fall_back(1, first, "the rewrite was empty")
         case Success(rewrite):
             pass
         case _:

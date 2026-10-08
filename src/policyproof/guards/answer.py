@@ -30,7 +30,7 @@ type Reading = Answer | Unclear | NotAnswered
 
 def opening_word(message: str) -> bool | None:
     """True or False if the message opens with a plain yes or no word, else None."""
-    text = message.strip().lower()
+    text = message.strip().lower().replace("\u2019", "'").replace("\u2018", "'")  # curly apostrophes too
     if re.match(rf"{YES}\b", text):
         return True
     if re.match(rf"{NO}\b", text):

@@ -1,10 +1,12 @@
 import asyncio
 
 import pytest
+from conftest import POLICIES
 from fakes import Answers, Claims, Facts, Rewriter
 from returns.result import Failure, Success
 
-from policyproof.core.decide import Decided, NeedInfo, decide
+from policyproof.core.codec import from_yaml
+from policyproof.core.decide import Decided, Escalate, NeedInfo, decide
 from policyproof.core.facts import Answered, Fact, FromSystem, Quoted, facts
 from policyproof.core.solver import compile
 from policyproof.core.syntax import BoolLit, IntLit
@@ -137,3 +139,26 @@ def test_claims_the_guard_rejects_fail_the_check(c):
     rewriter = Rewriter(Success(GOOD))
     guard(c, GOOD, Claims([sneaky, GOOD_CLAIMS]), rewriter)
     assert rewriter.problems[0][-1].rule == "claims_readable"
+
+
+def test_the_answer_reader_decides_the_asked_variable_not_a_volunteered_fact(toy):
+    """An answer the guard found unclear can't decide the turn through a volunteered fact about the same variable."""
+    question = "question: Would you like your money back?"
+    text = (POLICIES / "toy.yaml").read_text().replace(question, f"{question}\n    confirm_volunteered: false")
+    trusting = compile(from_yaml(text).unwrap())
+    pending = decide(trusting, facts(LATE))
+    assert isinstance(pending, NeedInfo)
+    found = Facts(Success((RawFact("wantsRefund", False, Quoted("a voucher is fine")),)))
+    t = turn(trusting, Conversation(facts(LATE), pending, frozenset()), "Yes, a voucher is fine.",
+             Answers(Success(Said(False, "a voucher is fine"))), found).unwrap()
+    assert t.answer == Unclear("opening contradicts answer")
+    assert isinstance(t.decision, NeedInfo) and t.decision.var == "wantsRefund" and t.decision.reason == "unclear"
+    assert "wantsRefund" not in t.state.facts
+    assert [r.item for r in t.rejected] == ["wantsRefund"]
+
+
+def test_an_empty_rewrite_falls_back_even_when_nothing_is_required(c):
+    """An escalation requires nothing of the reply, so an empty rewrite would pass the check vacuously."""
+    g = asyncio.run(guard_reply(c, ANSWERED, Escalate("review"), BAD, Claims([BAD_CLAIMS, Success(())]),
+                                Rewriter(Success("  "))))
+    assert g.fell_back and g.reason == "the rewrite was empty" and g.text == "A person will review this."

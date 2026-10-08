@@ -61,8 +61,13 @@ What each part does when something goes wrong (it always errs toward asking agai
 Claims cover the policy's variables only. A reply can still promise something the policy has no variable for (a
 callback, a payment method); catch those with the core's domain rules (`forbid`, `only_entities`).
 
-Readers can be combined (`effects.consensus`): `AgreeingFacts(jev, llm)` keeps only facts both found, and
-`UnionClaims(a, b)` checks every claim either found.
+Readers can be combined (`effects.consensus`): `AgreeingFacts(jev, llm)` keeps only facts both found,
+`AgreeingAnswers(a, b)` accepts an answer only if both read the same value, and `UnionClaims(a, b)` checks every claim
+either found. If one of the two fails, the other's result is used alone (as with a single reader) and a WARNING is
+logged on `policyproof.consensus`.
+
+Quotes are matched on letters and digits a to z and 0 to 9 (the core's `normalize`), so text in other scripts
+(Chinese, Cyrillic, Arabic, ...) can't be quoted yet: every answer reads as unclear and every reply falls back.
 
 A `Compiled` policy holds a Z3 context: use it from one thread (any number of turns on one event loop is fine).
 
