@@ -53,6 +53,12 @@ def main(argv: Sequence[str] | None = None, *, models: "Mapping[str, Model] | No
         return _fail("--max-conservative must be between 0 and 1")
     if args.json and not args.json.parent.is_dir():
         return _fail(f"can't write the report: {args.json.parent} does not exist")
+    if args.json:
+        try:  # open it now, so a path that can't be written fails before the paid run, not after it
+            with args.json.open("a"):
+                pass
+        except OSError as e:
+            return _fail(f"can't write the report: {args.json}: {e.strerror}")
     match load(args.cases):
         case Failure(err):
             return _fail(f"{args.cases}: {err}")

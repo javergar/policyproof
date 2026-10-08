@@ -110,3 +110,18 @@ def test_runs_and_concurrency_must_be_positive():
     for kw in ({"runs": 0}, {"concurrency": 0}):
         with pytest.raises(ValueError, match="at least 1"):
             asyncio.run(evaluate(CASES, [config()], **kw))
+
+
+def test_the_draft_sent_unchanged_after_a_no_op_rewrite_is_wrong():
+    """The rewriter returns the draft as it was and a misreading second check lets it through: the bad draft is sent."""
+    misread = Success((RawClaim("refund", "get a voucher"),))
+    no_op = config(claims=Claims([VOUCHER, misread]), rewriter=Rewriter(Success("You'll get a voucher.")))
+    case = asyncio.run(evaluate(CASES, [no_op], runs=1)).configurations[0].cases[1]
+    assert case.grade == Wrong("the draft was sent as written, expected it to be caught")
+
+
+def test_there_must_be_cases():
+    import pytest
+    empty = decode({"policy": str(POLICIES / "toy.yaml"), "cases": []}, POLICIES).unwrap()
+    with pytest.raises(ValueError, match="no cases"):
+        asyncio.run(evaluate(empty, [config()]))

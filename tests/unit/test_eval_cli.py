@@ -120,3 +120,13 @@ def test_a_case_file_without_cases_exits_2(files, capsys):
     (files / "empty.yaml").write_text(f"policy: {POLICIES / 'toy.yaml'}\ncases: []\n")
     assert main(["eval", str(files / "empty.yaml"), "--readers", str(files / "readers.yaml")]) == 2
     assert "has no cases" in capsys.readouterr().err
+
+
+def test_a_json_path_that_cannot_be_written_exits_2_before_the_run(files, capsys):
+    calls = []
+
+    def never(messages, info):
+        calls.append(1)
+        raise AssertionError("a model was called")
+    assert run(files, "--json", str(files), model=FunctionModel(never)) == 2  # a directory, not a file
+    assert "can't write the report" in capsys.readouterr().err and not calls

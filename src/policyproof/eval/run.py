@@ -13,6 +13,7 @@ from typing import assert_never
 from returns.result import Failure, Success
 
 from policyproof.core._result import unreachable
+from policyproof.core.check import normalize
 from policyproof.core.decide import (
     Contradiction,
     Decided,
@@ -148,7 +149,9 @@ async def _reply(c: Compiled, cfg: Configuration, case: ReplyCase) -> tuple[Grad
     except Exception as e:
         crash = f"{type(e).__name__}: {e}"
         return grade_reply(case, Crashed(crash)), (f"crashed: {crash}",)
-    seen = ReplySeen(as_written=not g.fell_back and g.attempts == 1)
+    # "As written" is about the text sent, not the number of attempts: a rewrite that returns the draft unchanged
+    # and passes a second (mis)read still sends the draft.
+    seen = ReplySeen(as_written=not g.fell_back and normalize(g.text) == normalize(case.draft))
     return grade_reply(case, seen), (_decision_line(d), *_reply_trace(g))
 
 
@@ -169,6 +172,8 @@ async def evaluate(f: CaseFile, configurations: Sequence[Configuration], *, runs
                    concurrency: int = 4) -> Report:
     if runs < 1 or concurrency < 1:
         raise ValueError(f"runs and concurrency must be at least 1, got runs={runs}, concurrency={concurrency}")
+    if not f.cases:
+        raise ValueError("no cases to evaluate: an empty case file would pass the gate without testing anything")
     c = compile(f.policy)
     limit = asyncio.Semaphore(concurrency)
     results = []

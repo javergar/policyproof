@@ -147,13 +147,23 @@ def _decision(p: CheckedPolicy, x: object, path: str) -> Result[ExpectDecision, 
             return _err(path, "expected an outcome name, {ask: <variable>} or escalate")
 
 
-def _expected_facts(p: CheckedPolicy, x: object, path: str) -> Result[tuple[tuple[str, Lit], ...], CaseError]:
+def _expected_facts(p: CheckedPolicy, x: object, path: str, given: Facts
+                    ) -> Result[tuple[tuple[str, Lit], ...], CaseError]:
+    """Facts the turn must read. One the case already gives, or a derived one, could never test reading."""
     if x is None:
         return Success(())
     if not isinstance(x, dict):
         return _err(path, "expected a map of variable: value")
-    return sequence(literal_for(p, str(k), v).alt(lambda m, k=k: CaseError(f"{path}.{k}", m)).map(
-        lambda lit, k=k: (str(k), lit)) for k, v in x.items())
+
+    def one(var: str, value: object) -> Result[tuple[str, Lit], CaseError]:
+        at = f"{path}.{var}"
+        v = next((v for v in p.variables if v.name == var), None)
+        if v is not None and isinstance(v.role, Derived):
+            return _err(at, f"{var} is derived by the rules; a reader never reads it")
+        if var in given:
+            return _err(at, f"{var} is already given in turn.facts, so reading it would test nothing")
+        return literal_for(p, var, value).alt(lambda m: CaseError(at, m)).map(lambda lit: (var, lit))
+    return sequence(one(str(k), v) for k, v in x.items())
 
 
 def _turn(p: CheckedPolicy, cid: str, held: bool, body: object, expect: object, path: str
@@ -162,10 +172,12 @@ def _turn(p: CheckedPolicy, cid: str, held: bool, body: object, expect: object, 
     return _map(body, at, {"facts", "asked", "message"}, {"message"}).bind(lambda t: _map(
         expect, f"{path}.expect", {"decision", "facts"}, {"decision"}).bind(lambda e: _given(
             p, t.get("facts"), f"{at}.facts").bind(lambda given: (
-                Success(None) if t.get("asked") is None else _asked(p, t["asked"], f"{at}.asked")).bind(
+                Success(None) if t.get("asked") is None else _asked(p, t["asked"], f"{at}.asked").bind(
+                    lambda var: _err(f"{at}.asked", f"{var} is both asked and given in turn.facts; the answer "
+                                                    "would be ignored") if var in given else Success(var))).bind(
                 lambda asked: _text(t["message"], f"{at}.message").bind(lambda message: _decision(
                     p, e["decision"], f"{path}.expect.decision").bind(lambda decision: _expected_facts(
-                        p, e.get("facts"), f"{path}.expect.facts").map(lambda want: TurnCase(
+                        p, e.get("facts"), f"{path}.expect.facts", given).map(lambda want: TurnCase(
                             cid, held, given, asked, message, decision, want))))))))
 
 

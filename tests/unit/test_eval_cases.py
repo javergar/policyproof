@@ -74,6 +74,13 @@ def test_load_reads_the_policy_relative_to_the_case_file(tmp_path):
     ({**TURN, "reply": REPLY["reply"]}, "cases[0]", "exactly one of turn or reply"),
     ({**REPLY, "expect": "maybe"}, "cases[0].expect", "caught or pass"),
     ({**TURN, "colour": 1}, "cases[0].colour", "unknown key"),
+    ({**TURN, "turn": {**TURN["turn"], "facts": {"daysLate": 3, "wantsRefund": True}}}, "cases[0].turn.asked",
+     "both asked and given"),
+    ({**TURN, "turn": {**TURN["turn"], "facts": {"daysLate": 3, "carrier": "COURIER"}},
+      "expect": {"decision": "refund", "facts": {"carrier": "COURIER"}}}, "cases[0].expect.facts.carrier",
+     "already given"),
+    ({**TURN, "expect": {"decision": "refund", "facts": {"refund": True}}}, "cases[0].expect.facts.refund",
+     "derived"),
 ])
 def test_bad_cases_name_the_path(case, path, message):
     got = decode(file(case), POLICIES)
