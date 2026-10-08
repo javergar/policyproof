@@ -49,7 +49,10 @@ def build() -> dict[str, object]:
                 "type": "object", "required": ["sort", "role"], "additionalProperties": False,
                 "properties": {"sort": {"type": "string"}, "role": {"enum": ["system", "ask", "derived"]},
                                "description": {"type": "string"}, "question": {"type": "string"},
-                               "confirm_volunteered": {"type": "boolean"}},
+                               "confirm_volunteered": {"type": "boolean"},
+                               "phrasings": {"type": "object", "additionalProperties": {
+                                   "type": "array", "minItems": 1,
+                                   "items": {"type": "string", "pattern": "\\S"}}}},
                 "if": {"properties": {"role": {"const": "ask"}}}, "then": {"required": ["question"]},
             },
             "rule": {

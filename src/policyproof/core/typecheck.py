@@ -26,6 +26,7 @@ from policyproof.core.syntax import (
     Cmp,
     Constraint,
     Define,
+    Derived,
     EnumLit,
     EnumSort,
     Expr,
@@ -41,6 +42,7 @@ from policyproof.core.syntax import (
     RealSort,
     Sort,
     Var,
+    Variable,
     When,
 )
 
@@ -105,7 +107,13 @@ class EmptySort:
     name: str
 
 
-type SortError = UnknownName | UnknownValue | SortMismatch | BadArity | Duplicate | BadName | EmptySort
+@dataclass(frozen=True, slots=True)
+class BadPhrasings:
+    variable: str
+    message: str
+
+
+type SortError = UnknownName | UnknownValue | SortMismatch | BadArity | Duplicate | BadName | EmptySort | BadPhrasings
 
 
 def sort_name(s: Sort) -> str:
@@ -177,6 +185,19 @@ def _cmp(sig: Signature, op: str, s: Sort, rhs: Expr, where: str) -> Result[Sort
 # ---- policies
 
 
+def _phrasing_errors(sig: Signature, v: Variable) -> list[SortError]:
+    if not v.phrasings:
+        return []
+    if isinstance(v.role, Derived):
+        return [BadPhrasings(v.name, "a derived variable can't have phrasings")]
+    found: list[SortError] = []
+    for lit, texts in v.phrasings:
+        found += errors(_expect(sig, lit, v.sort, f"variables.{v.name}.phrasings"))
+        if not texts or any(not t.strip() for t in texts):
+            found.append(BadPhrasings(v.name, "each value needs at least one non-empty phrasing"))
+    return found
+
+
 def check_policy(p: Policy) -> Result[CheckedPolicy, tuple[SortError, ...]]:
     sig = signature(p)
     found: list[SortError] = []
@@ -190,6 +211,7 @@ def check_policy(p: Policy) -> Result[CheckedPolicy, tuple[SortError, ...]]:
     for v in p.variables:
         if isinstance(v.sort, EnumSort) and sig.sorts.get(v.sort.name) != v.sort:
             found.append(UnknownName(v.sort.name, f"variables.{v.name}"))
+        found += _phrasing_errors(sig, v)
     for r in p.rules:
         match r:
             case When(rid, when, then):

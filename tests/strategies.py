@@ -133,8 +133,21 @@ def policies() -> st.SearchStrategy[Policy]:
                        unique_by=lambda t: t[0])
     outcomes = st.lists(outcome, max_size=3).map(lambda os: tuple(
         Outcome(f"o{i}", tuple((v, BoolLit(b)) for v, b in a)) for i, a in enumerate(os)))
-    return st.builds(Policy, name=TEXT, version=TEXT, sorts=st.just((COLOR,)), variables=st.just(DECLS),
+    return st.builds(Policy, name=TEXT, version=TEXT, sorts=st.just((COLOR,)), variables=declarations(),
                      rules=numbered, outcomes=outcomes)
+
+
+PHRASES = st.lists(st.text("abc xyz'", min_size=1).filter(str.strip), min_size=1, max_size=2).map(tuple)
+
+
+def phrasings(s: Sort) -> st.SearchStrategy[tuple[tuple[Lit, tuple[str, ...]], ...]]:
+    return st.lists(st.tuples(literals(s), PHRASES), max_size=2, unique_by=lambda t: t[0]).map(tuple)
+
+
+def declarations() -> st.SearchStrategy[tuple[Variable, ...]]:
+    """`DECLS`, with phrasings drawn for every variable that may have them (all but the derived `r`)."""
+    return st.tuples(*(st.just(v) if isinstance(v.role, Derived) else phrasings(v.sort).map(
+        lambda ph, v=v: replace(v, phrasings=ph)) for v in DECLS))
 
 
 FINITE = ("p", "q", "r", "c")

@@ -5,6 +5,7 @@ in-memory data decode through the same code. Strings in, strings out: reading fi
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from fractions import Fraction
@@ -53,7 +54,7 @@ from policyproof.core.syntax import (
     Variable,
     When,
 )
-from policyproof.core.typecheck import Signature, SortError, check_policy, signature
+from policyproof.core.typecheck import Signature, SortError, check_policy, signature, sort_name
 
 # ---- trees
 
@@ -398,11 +399,51 @@ def _role(m: Map, path: str) -> Result[Role, DecodeError]:
     return _require(m, "role", path, _text).bind(build)
 
 
+def _phrase_key(sort: Sort, key: str) -> Lit | None:
+    """A phrasings key (always text in YAML) as a value of `sort`, or None if it isn't one."""
+    match sort:
+        case BoolSort():
+            return BoolLit(key.lower() == "true") if key.lower() in ("true", "false") else None
+        case IntSort():
+            return IntLit(int(key)) if re.fullmatch(r"-?\d+", key) else None
+        case RealSort():
+            try:
+                return RealLit(Fraction(key))
+            except (ValueError, ZeroDivisionError):
+                return None
+        case EnumSort(name, values):
+            short = key.removeprefix(f"{name}.")
+            return EnumLit(name, short) if short in values else None
+        case _:
+            assert_never(sort)
+
+
+def _phrases(t: Tree, path: str) -> Result[tuple[str, ...], DecodeError]:
+    def each(items: tuple[Tree, ...]) -> Result[tuple[str, ...], DecodeError]:
+        if not items:
+            return _err(path, t, "give at least one phrasing")
+        return sequence(_text(x, _join(path, i)).bind(
+            lambda s, x=x, i=i: Success(s) if s.strip() else _err(_join(path, i), x, "a phrasing can't be empty"))
+            for i, x in enumerate(items))
+    return _seq(t, path).bind(lambda s: each(s.items))
+
+
+def _phrasings(sort: Sort, t: Tree, path: str) -> Result[tuple[tuple[Lit, tuple[str, ...]], ...], DecodeError]:
+    def entry(key: str, v: Tree) -> Result[tuple[Lit, tuple[str, ...]], DecodeError]:
+        lit = _phrase_key(sort, key)
+        if lit is None:
+            return _err(_join(path, key), v, f"{key!r} is not a {sort_name(sort)} value")
+        return _phrases(v, _join(path, key)).map(lambda texts: (lit, texts))
+    return _map(t, path).bind(lambda m: sequence(entry(k, v) for k, v in m.items))
+
+
 def _variable(sorts: dict[str, EnumSort], name: str, t: Tree, path: str) -> Result[Variable, DecodeError]:
-    keys = {"sort", "role", "description", "question", "confirm_volunteered"}
+    keys = {"sort", "role", "description", "question", "confirm_volunteered", "phrasings"}
     return _map(t, path).bind(lambda m: _known_keys(m, path, keys)).bind(lambda m: _require(
         m, "sort", path, lambda x, p: _sort(sorts, x, p)).bind(lambda s: _role(m, path).bind(
-            lambda r: _optional(m, "description", path, _text, "").map(lambda d: Variable(name, s, r, d)))))
+            lambda r: _optional(m, "description", path, _text, "").bind(
+                lambda d: _optional(m, "phrasings", path, lambda x, p: _phrasings(s, x, p), ()).map(
+                    lambda ph: Variable(name, s, r, d, ph))))))
 
 
 def _variables(sorts: dict[str, EnumSort], t: Tree, path: str) -> Result[tuple[Variable, ...], DecodeError]:
@@ -510,7 +551,23 @@ def _encode_variable(v: Variable) -> dict[str, Data]:
         case _:
             assert_never(v.role)
     out["description"] = v.description
+    if v.phrasings:
+        out["phrasings"] = {_phrase_text(lit): list(texts) for lit, texts in v.phrasings}
     return out
+
+
+def _phrase_text(lit: Lit) -> str:
+    match lit:
+        case BoolLit(b):
+            return "true" if b else "false"
+        case IntLit(n):
+            return str(n)
+        case RealLit(q):
+            return str(q)
+        case EnumLit(_, value):
+            return value
+        case _:
+            assert_never(lit)
 
 
 def _encode_rule(r: Rule) -> dict[str, Data]:

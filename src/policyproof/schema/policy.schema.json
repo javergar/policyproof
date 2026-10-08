@@ -88,6 +88,17 @@
         },
         "confirm_volunteered": {
           "type": "boolean"
+        },
+        "phrasings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          }
         }
       },
       "if": {

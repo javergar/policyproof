@@ -194,6 +194,7 @@ class Variable:
     sort: Sort
     role: Role
     description: str
+    phrasings: tuple[tuple[Lit, tuple[str, ...]], ...] = ()  # example wordings per value, for readers only
 
 
 @dataclass(frozen=True, slots=True)
