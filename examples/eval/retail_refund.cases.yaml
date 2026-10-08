@@ -1,0 +1,44 @@
+# Cases for the retail refund policy (from the policy-reasoning-lab).
+policy: ../../tests/policies/retail_refund.yaml
+cases:
+  - id: sealed-headphones
+    turn:
+      facts: {itemCategory: HEADPHONES, daysSincePurchase: 5, hasProofOfPurchase: true, isFinalSale: false,
+              isBoughtOnClearance: false, isDefective: false}
+      asked: isOpened
+      message: "No, they're still sealed in the box."
+    expect: {decision: refund, facts: {isOpened: false}}
+  - id: opened-headphones
+    turn:
+      facts: {itemCategory: HEADPHONES, daysSincePurchase: 5, hasProofOfPurchase: true, isFinalSale: false,
+              isBoughtOnClearance: false, isDefective: false}
+      asked: isOpened
+      message: "Yes, I opened them and tried them on."
+    expect: {decision: no_refund, facts: {isOpened: true}}
+  - id: laptop-past-the-window
+    turn:
+      facts: {itemCategory: LAPTOPS, daysSincePurchase: 20, hasProofOfPurchase: true, isFinalSale: false,
+              isBoughtOnClearance: false, isDefective: false}
+      asked: isOpened
+      message: "No, it's unopened."
+    expect: {decision: no_refund, facts: {isOpened: false}}
+  - id: refund-draft-passes
+    reply:
+      facts: {itemCategory: HEADPHONES, daysSincePurchase: 5, hasProofOfPurchase: true, isOpened: false,
+              isDefective: false, isFinalSale: false, isBoughtOnClearance: false}
+      draft: "Your headphones are unopened and within the return window, so you'll get a refund."
+    expect: pass
+  - id: late-laptop-refund-is-caught
+    reply:
+      facts: {itemCategory: LAPTOPS, daysSincePurchase: 20, hasProofOfPurchase: true, isOpened: false,
+              isDefective: false, isFinalSale: false, isBoughtOnClearance: false}
+      draft: "You can return the laptop for a full refund."
+    expect: caught
+  - id: unopened-and-cracked
+    held_out: true
+    turn:
+      facts: {itemCategory: SMART_WATCHES, daysSincePurchase: 12, hasProofOfPurchase: true, isFinalSale: false,
+              isBoughtOnClearance: false}
+      asked: isOpened
+      message: "It's unopened, but I can see the screen is cracked through the box."
+    expect: {decision: refund, facts: {isOpened: false}}

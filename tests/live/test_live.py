@@ -68,3 +68,17 @@ def test_jev_reads_facts_and_an_answer(toy):
     found = asyncio.run(r.read_facts(c.policy, "It came by courier and I want my money back.")).unwrap()
     assert {(f.var, f.value) for f in found} >= {("carrier", "COURIER")}
     assert isinstance(asyncio.run(r.read_answer(c.policy, "wantsRefund", "Yes please, money back.")), Success)
+
+
+@needs_bedrock
+def test_bedrock_passes_the_toy_evaluation_gate():
+    from pathlib import Path
+
+    from policyproof.eval.cases import load
+    from policyproof.eval.report import gate, render_text
+    from policyproof.eval.run import Configuration, evaluate
+
+    r = llm()
+    cases = load(Path(__file__).parent.parent.parent / "examples" / "eval" / "toy.cases.yaml").unwrap()
+    report = asyncio.run(evaluate(cases, [Configuration("haiku", r, r, r, r)], runs=1))
+    assert gate(report.configurations[0]).passed, render_text(report)

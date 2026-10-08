@@ -71,6 +71,51 @@ Quotes are matched on letters and digits a to z and 0 to 9 (the core's `normaliz
 
 A `Compiled` policy holds a Z3 context: use it from one thread (any number of turns on one event loop is fine).
 
+## Evaluating a configuration: `policyproof eval`
+
+Before deploying, check that your readers are safe on your policy. Write cases next to it: a turn case gives the
+known facts, the question pending and the customer's message, and says what must be decided; a reply case gives the
+facts and a draft, and says whether the check must catch it.
+
+```yaml
+policy: policy.yaml
+cases:
+  - id: says-yes
+    turn: {facts: {daysLate: 3}, asked: wantsRefund, message: "Yes please, I'd like my money back."}
+    expect: {decision: refund, facts: {wantsRefund: true}}
+  - id: voucher-draft-is-caught
+    held_out: true
+    reply: {facts: {daysLate: 3, wantsRefund: true}, draft: "You'll get a voucher."}
+    expect: caught
+```
+
+Name your reader configurations (models are pydantic-ai model strings) and run them:
+
+```bash
+policyproof eval cases.yaml --readers readers.yaml --runs 3 --json report.json
+```
+
+Every case runs `--runs` times for each configuration. A run is **correct**, **conservative** (it asked again,
+escalated, or fell back: safe but unhelpful) or **wrong** (it decided the wrong outcome, misread a fact, or let a bad
+draft through), and a case is as bad as its worst run. The gate passes with zero wrong cases and at most
+`--max-conservative` (10%) conservative ones, over all cases and over the held-out cases alone. Exit codes: 0 pass,
+1 fail, 2 invalid input (checked before any model is called).
+
+Write held-out cases last and don't tune against them. `examples/eval/` has cases for the three reference policies
+and a `readers.yaml`. On Bedrock Claude Haiku 4.5 the toy and flight cases pass; the retail held-out case
+`unopened-and-cracked` comes out conservative (the model finds "unopened, but the screen is cracked" contradictory
+and asks again), which is what a failed gate looks like in practice.
+
+Phrasings help readers recognise answers. Add them to a variable in the policy; they never change a decision:
+
+```yaml
+wantsRefund:
+  sort: Bool
+  role: ask
+  question: Would you like your money back?
+  phrasings: {true: [money back, a refund], false: [a voucher is fine]}
+```
+
 ## Development
 
 ```bash

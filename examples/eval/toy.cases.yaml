@@ -1,0 +1,45 @@
+# Cases for the toy delivery policy. Turn cases read the customer's message; reply cases check a drafted reply.
+# Held-out cases were written last and not used to tune anything.
+policy: ../../tests/policies/toy.yaml
+cases:
+  - id: says-yes
+    turn: {facts: {daysLate: 3}, asked: wantsRefund, message: "Yes please, I'd like my money back."}
+    expect: {decision: refund, facts: {wantsRefund: true}}
+  - id: prefers-voucher
+    turn: {facts: {daysLate: 3}, asked: wantsRefund, message: "No thanks, a voucher is fine."}
+    expect: {decision: voucher, facts: {wantsRefund: false}}
+  - id: yes-but-voucher
+    turn: {facts: {daysLate: 3}, asked: wantsRefund, message: "Yes, a voucher is fine."}
+    expect: {decision: {ask: wantsRefund}}
+  - id: asks-something-else
+    turn: {facts: {daysLate: 3}, asked: wantsRefund, message: "When will my next parcel arrive?"}
+    expect: {decision: {ask: wantsRefund}}
+  - id: on-time-anyway
+    turn: {facts: {daysLate: 0}, asked: wantsRefund, message: "Yes, money back please."}
+    expect: {decision: nothing}
+  - id: courier-one-day
+    turn: {facts: {daysLate: 1, carrier: COURIER}, asked: wantsRefund, message: "I'd like a refund, please."}
+    expect: {decision: refund, facts: {wantsRefund: true}}
+  - id: refund-draft-passes
+    reply:
+      facts: {daysLate: 3, wantsRefund: true}
+      draft: "Sorry for the delay. Since your parcel was 3 days late, you'll get a refund."
+    expect: pass
+  - id: voucher-draft-is-caught
+    reply: {facts: {daysLate: 3, wantsRefund: true}, draft: "Sorry for the delay, you'll get a voucher."}
+    expect: caught
+  - id: on-time-refund-is-caught
+    reply: {facts: {daysLate: 0, wantsRefund: true}, draft: "Your parcel was late, so you'll get a refund."}
+    expect: caught
+  - id: hedged-answer
+    held_out: true
+    turn: {facts: {daysLate: 3}, asked: wantsRefund, message: "Hmm, I'm not sure. What would you suggest?"}
+    expect: {decision: {ask: wantsRefund}}
+  - id: one-word-refund
+    held_out: true
+    turn: {facts: {daysLate: 3}, asked: wantsRefund, message: "Refund."}
+    expect: {decision: refund, facts: {wantsRefund: true}}
+  - id: both-offers-are-caught
+    held_out: true
+    reply: {facts: {daysLate: 3, wantsRefund: true}, draft: "You'll get a refund and a voucher as well."}
+    expect: caught

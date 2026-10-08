@@ -1,0 +1,51 @@
+# Cases for the flight disruption policy (the AgentCore demo's policy).
+policy: ../../tests/policies/flight_disruption.yaml
+cases:
+  - id: crew-cancellation-no-travel
+    turn:
+      facts: {fareType: CHOICE, disruption: CANCELLED, delayHours: 0, disruptionCause: CREW, hoursSinceBooking: 100,
+              daysToDeparture: 3, hasFlown: false}
+      asked: wantsToTravel
+      message: "No, I don't want to travel any more. Please cancel it."
+    expect: {decision: full_refund, facts: {wantsToTravel: false}}
+  - id: crew-cancellation-still-travelling
+    turn:
+      facts: {fareType: CHOICE, disruption: CANCELLED, delayHours: 0, disruptionCause: CREW, hoursSinceBooking: 100,
+              daysToDeparture: 3, hasFlown: false}
+      asked: wantsToTravel
+      message: "Yes, I still need to get there."
+    expect: {decision: free_rebooking, facts: {wantsToTravel: true}}
+  - id: weather-delay-lite-fare
+    turn:
+      facts: {fareType: LITE, disruption: DELAYED, delayHours: 5, disruptionCause: WEATHER, hoursSinceBooking: 100,
+              daysToDeparture: 3, hasFlown: false}
+      asked: wantsToTravel
+      message: "No, cancel it please."
+    expect: {decision: travel_credit, facts: {wantsToTravel: false}}
+  - id: yes-please-cancel
+    turn:
+      facts: {fareType: CHOICE, disruption: DELAYED, delayHours: 4, disruptionCause: CREW, hoursSinceBooking: 100,
+              daysToDeparture: 3, hasFlown: false}
+      asked: wantsToTravel
+      message: "Yes, that's right, please cancel it."
+    expect: {decision: {ask: wantsToTravel}}
+  - id: refund-draft-passes
+    reply:
+      facts: {fareType: CHOICE, disruption: CANCELLED, delayHours: 0, disruptionCause: CREW, hoursSinceBooking: 100,
+              daysToDeparture: 3, hasFlown: false, wantsToTravel: false}
+      draft: "Your flight was cancelled because of a crew issue, so you're entitled to a full refund."
+    expect: pass
+  - id: credit-instead-of-refund-is-caught
+    reply:
+      facts: {fareType: CHOICE, disruption: CANCELLED, delayHours: 0, disruptionCause: CREW, hoursSinceBooking: 100,
+              daysToDeparture: 3, hasFlown: false, wantsToTravel: false}
+      draft: "Your flight was cancelled, so you're entitled to a travel credit."
+    expect: caught
+  - id: flex-fare-other-plans
+    held_out: true
+    turn:
+      facts: {fareType: FLEX, disruption: DELAYED, delayHours: 4, disruptionCause: AIR_TRAFFIC_CONTROL,
+              hoursSinceBooking: 100, daysToDeparture: 3, hasFlown: false}
+      asked: wantsToTravel
+      message: "I'd rather not fly now, I'll make other plans."
+    expect: {decision: full_refund, facts: {wantsToTravel: false}}

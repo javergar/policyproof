@@ -1,0 +1,12 @@
+# Reader configurations for `policyproof eval`. Models are pydantic-ai model strings; install the matching extra
+# (e.g. pydantic-ai-slim[bedrock]) and set the provider's credentials (AWS_PROFILE/AWS_REGION, TYPESAFE_API_KEY).
+models:
+  haiku: bedrock:au.anthropic.claude-haiku-4-5-20251001-v1:0
+  jev: typesafe:jev-1.13.0
+configurations:
+  haiku: {answers: haiku, facts: haiku, claims: haiku, rewriter: haiku}
+  jev-and-haiku:
+    answers: {agree: [jev, haiku]}
+    facts: {agree: [jev, haiku]}
+    claims: haiku
+    rewriter: haiku
