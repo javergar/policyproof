@@ -324,3 +324,29 @@ wantsRefund:
 
 - Whether held-out cases should be kept in a separate file so they can't be tuned against; for now it's a flag, and
   the README says to write them after tuning, as in the lab.
+
+## Refinements from prototyping the plan (2026-10-08)
+
+Decisions made while building the plan's prototype; each is reflected in `docs/plans/2026-10-08-eval.md`.
+
+- **The pure modules may import guards too.** `eval.cases` decodes values with `guards.values.literal_for`, and
+  guards are pure, so the contract for `eval.cases`, `eval.grade` and `eval.report` forbids `policyproof.effects`,
+  pydantic and SDKs rather than everything but the core.
+- **Expectation types are named `OutcomeExpected`, `AskExpected` and `EscalateExpected`,** to avoid clashing with the
+  core's `syntax.Outcome` and `syntax.Ask`. In a case file, an outcome name wins over the keyword `escalate`.
+- **Grading works on observations, not pipeline types.** The runner reduces each result to `TurnSeen(decision,
+  facts)`, `ReaderFailed(reason)`, `Crashed(reason)` or `ReplySeen(as_written)`, so `eval.grade` needs only the core.
+- **Traces are text lines** written by the runner (`RunResult.trace: tuple[str, ...]`) rather than typed
+  `TurnTrace | ReplyTrace | ErrorTrace` values: the report stays pure and its JSON is plain. A reply's trace shows the
+  last check run (`Guarded.result`), not the first draft's problems.
+- **`CaseFile` also carries `source`,** the resolved policy path, for the report.
+- **Phrasings are decoded per the variable's sort in the codec** (a bad key is a `DecodeError` with its path); the
+  type check also checks phrasings built in Python (`SortMismatch`, `BadPhrasings`).
+- **`build` builds only the models the configurations use,** and the CLI applies `--only` before building, so a
+  configuration needing a Jev key doesn't stop a run of the others. Jev in a claims or rewriter slot is refused both
+  by model string (`typesafe:`) and by the built model's type.
+- **The CLI refuses, with exit code 2 and before any model call:** `--runs` or `--concurrency` below 1,
+  `--max-conservative` outside 0 to 1, `--json` into a missing directory, and a case file with no cases.
+  `evaluate` raises `ValueError` for `runs` or `concurrency` below 1 (a zero semaphore would hang).
+- **A held-out conservative case fails the held-out half of the gate,** even when it is the only held-out case
+  (100%). This follows the gate's definition; the README shows it with the retail example.
