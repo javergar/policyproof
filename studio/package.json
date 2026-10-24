@@ -1,0 +1,30 @@
+{
+  "name": "policyproof-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The policyproof studio page. The built page ships inside the Python package; Node is only for developing it.",
+  "scripts": {
+    "codegen": "node scripts/codegen.mjs",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "4.7.0",
+    "fast-check": "4.10.2",
+    "json-schema-to-typescript": "15.0.4",
+    "typescript": "5.9.3",
+    "vite": "6.4.5",
+    "vitest": "3.2.7"
+  }
+}
