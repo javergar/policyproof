@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import re
-from typing import assert_never
+from typing import Literal, assert_never
 
-from policyproof.core.problems import Customer
+from policyproof.core.problems import Customer, Says
 from policyproof.core.syntax import (
     BoolLit,
     CheckedPolicy,
@@ -61,3 +61,22 @@ def outcome_label(o: Outcome) -> str:
     words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", o.name).replace("_", " ").split()
     text = " ".join(words).lower()
     return text[:1].upper() + text[1:]
+
+
+type Tone = Literal["yes", "no", "none"]
+
+
+def verdict(p: CheckedPolicy, says: Says) -> tuple[str, Tone]:
+    """What one rule says for a customer, in words: the outcome it forces ("A refund"); else the first outcome it
+    rules out ("No refund", "Not a voucher"); else that it only can't hold with the others. An outcome made only of
+    false flags reads as withholding something, so its tone is "no"."""
+    forced = dict(says.forces)
+    for o in p.outcomes:
+        if o.assignment and all(forced.get(var) == x for var, x in o.assignment):
+            return outcome_label(o), "no" if all(x == BoolLit(False) for _, x in o.assignment) else "yes"
+    for o in p.outcomes:
+        if any(var in forced and forced[var] != x for var, x in o.assignment):
+            label = outcome_label(o)
+            lower = label[:1].lower() + label[1:]
+            return (f"Not {lower}" if re.match(r"(a|an|the) ", lower) else f"No {lower}"), "no"
+    return "Can't hold together with the others", "none"
