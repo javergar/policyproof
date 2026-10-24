@@ -41,6 +41,8 @@ from policyproof.core.syntax import (
     RealLit,
     RealSort,
     Sort,
+    Template,
+    ValuePhrases,
     Var,
     Variable,
     When,
@@ -113,7 +115,14 @@ class BadPhrasings:
     message: str
 
 
-type SortError = UnknownName | UnknownValue | SortMismatch | BadArity | Duplicate | BadName | EmptySort | BadPhrasings
+@dataclass(frozen=True, slots=True)
+class BadDisplay:
+    variable: str
+    message: str
+
+
+type SortError = (UnknownName | UnknownValue | SortMismatch | BadArity | Duplicate | BadName | EmptySort | BadPhrasings
+                  | BadDisplay)
 
 
 def sort_name(s: Sort) -> str:
@@ -198,6 +207,30 @@ def _phrasing_errors(sig: Signature, v: Variable) -> list[SortError]:
     return found
 
 
+def _display_errors(sig: Signature, v: Variable) -> list[SortError]:
+    numeric = isinstance(v.sort, IntSort | RealSort)
+    match v.display:
+        case None:
+            return []
+        case Template(text):
+            if not numeric:
+                return [BadDisplay(v.name, "a yes/no or choice variable takes a phrase per value, not a template")]
+            if text.count("{}") != 1:
+                return [BadDisplay(v.name, "a template needs exactly one {} for the value")]
+            return []
+        case ValuePhrases(phrases):
+            if numeric:
+                return [BadDisplay(v.name, "a number variable takes a template with one {}, not a phrase per value")]
+            found: list[SortError] = []
+            for lit, text in phrases:
+                found += errors(_expect(sig, lit, v.sort, f"variables.{v.name}.display"))
+                if not text.strip():
+                    found.append(BadDisplay(v.name, "a display phrase can't be empty"))
+            return found
+        case _:
+            assert_never(v.display)
+
+
 def check_policy(p: Policy) -> Result[CheckedPolicy, tuple[SortError, ...]]:
     sig = signature(p)
     found: list[SortError] = []
@@ -212,6 +245,7 @@ def check_policy(p: Policy) -> Result[CheckedPolicy, tuple[SortError, ...]]:
         if isinstance(v.sort, EnumSort) and sig.sorts.get(v.sort.name) != v.sort:
             found.append(UnknownName(v.sort.name, f"variables.{v.name}"))
         found += _phrasing_errors(sig, v)
+        found += _display_errors(sig, v)
     for r in p.rules:
         match r:
             case When(rid, when, then):
@@ -226,6 +260,8 @@ def check_policy(p: Policy) -> Result[CheckedPolicy, tuple[SortError, ...]]:
             case _:
                 assert_never(r)
     for o in p.outcomes:
+        if o.display is not None and not o.display.strip():
+            found.append(BadDisplay(o.name, "an outcome's display can't be empty"))
         for var, value in o.assignment:
             if var not in sig.variables:
                 found.append(UnknownName(var, f"outcomes.{o.name}"))

@@ -99,6 +99,21 @@
               "pattern": "\\S"
             }
           }
+        },
+        "display": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "\\{\\}"
+            },
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            }
+          ]
         }
       },
       "if": {

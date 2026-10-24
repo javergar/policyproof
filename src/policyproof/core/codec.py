@@ -31,6 +31,7 @@ from policyproof.core.syntax import (
     Constraint,
     Define,
     Derived,
+    Display,
     EnumLit,
     EnumSort,
     Expr,
@@ -50,6 +51,8 @@ from policyproof.core.syntax import (
     Rule,
     Sort,
     System,
+    Template,
+    ValuePhrases,
     Var,
     Variable,
     When,
@@ -437,13 +440,28 @@ def _phrasings(sort: Sort, t: Tree, path: str) -> Result[tuple[tuple[Lit, tuple[
     return _map(t, path).bind(lambda m: sequence(entry(k, v) for k, v in m.items))
 
 
+def _display(sort: Sort, t: Tree, path: str) -> Result[Display | None, DecodeError]:
+    """A map is a phrase per value; text is a template. Which shape fits which sort is the typecheck's job."""
+    def entry(key: str, v: Tree) -> Result[tuple[Lit, str], DecodeError]:
+        lit = _phrase_key(sort, key)
+        if lit is None:
+            return _err(_join(path, key), v, f"{key!r} is not a {sort_name(sort)} value")
+        return _text(v, _join(path, key)).map(lambda text: (lit, text))
+    match t:
+        case Map(items):
+            return sequence(entry(k, v) for k, v in items).map(ValuePhrases)
+        case _:
+            return _text(t, path).map(Template)
+
+
 def _variable(sorts: dict[str, EnumSort], name: str, t: Tree, path: str) -> Result[Variable, DecodeError]:
-    keys = {"sort", "role", "description", "question", "confirm_volunteered", "phrasings"}
+    keys = {"sort", "role", "description", "question", "confirm_volunteered", "phrasings", "display"}
     return _map(t, path).bind(lambda m: _known_keys(m, path, keys)).bind(lambda m: _require(
         m, "sort", path, lambda x, p: _sort(sorts, x, p)).bind(lambda s: _role(m, path).bind(
             lambda r: _optional(m, "description", path, _text, "").bind(
-                lambda d: _optional(m, "phrasings", path, lambda x, p: _phrasings(s, x, p), ()).map(
-                    lambda ph: Variable(name, s, r, d, ph))))))
+                lambda d: _optional(m, "phrasings", path, lambda x, p: _phrasings(s, x, p), ()).bind(
+                    lambda ph: _optional(m, "display", path, lambda x, p: _display(s, x, p), None).map(
+                        lambda dp: Variable(name, s, r, d, ph, dp)))))))
 
 
 def _variables(sorts: dict[str, EnumSort], t: Tree, path: str) -> Result[tuple[Variable, ...], DecodeError]:
@@ -486,7 +504,13 @@ def _outcome(sig: Signature, name: str, t: Tree, path: str) -> Result[Outcome, D
         p = _join(path, var)
         return decode_expr(sig, x, p).bind(lambda e: Success((var, e)) if isinstance(
             e, BoolLit | IntLit | RealLit | EnumLit) else _err(p, x, "an outcome assigns literal values only"))
-    return _map(t, path).bind(lambda m: sequence(literal(k, v) for k, v in m.items)).map(lambda a: Outcome(name, a))
+    def build(m: Map) -> Result[Outcome, DecodeError]:
+        # `display` is the outcome's text unless the policy has a variable of that name
+        shown = _field(m, "display") if "display" not in sig.variables else None
+        pairs = [(k, v) for k, v in m.items if not (k == "display" and shown is not None)]
+        display = _text(shown, _join(path, "display")) if shown is not None else Success(None)
+        return display.bind(lambda d: sequence(literal(k, v) for k, v in pairs).map(lambda a: Outcome(name, a, d)))
+    return _map(t, path).bind(build)
 
 
 def decode_tree(t: Tree) -> Result[Policy, DecodeError]:
@@ -553,6 +577,22 @@ def _encode_variable(v: Variable) -> dict[str, Data]:
     out["description"] = v.description
     if v.phrasings:
         out["phrasings"] = {_phrase_text(lit): list(texts) for lit, texts in v.phrasings}
+    match v.display:
+        case None:
+            pass
+        case ValuePhrases(phrases):
+            out["display"] = {_phrase_text(lit): text for lit, text in phrases}
+        case Template(text):
+            out["display"] = text
+        case _:
+            assert_never(v.display)
+    return out
+
+
+def _encode_outcome(o: Outcome) -> dict[str, Data]:
+    out: dict[str, Data] = {var: encode_expr(lit) for var, lit in o.assignment}
+    if o.display is not None:
+        out["display"] = o.display
     return out
 
 
@@ -595,7 +635,7 @@ def encode(p: Policy) -> dict[str, Data]:
         "sorts": {s.name: list(s.values) for s in p.sorts},
         "variables": {v.name: _encode_variable(v) for v in p.variables},
         "rules": [_encode_rule(r) for r in p.rules],
-        "outcomes": {o.name: {var: encode_expr(lit) for var, lit in o.assignment} for o in p.outcomes},
+        "outcomes": {o.name: _encode_outcome(o) for o in p.outcomes},
     }
 
 

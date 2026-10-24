@@ -52,7 +52,10 @@ def build() -> dict[str, object]:
                                "confirm_volunteered": {"type": "boolean"},
                                "phrasings": {"type": "object", "additionalProperties": {
                                    "type": "array", "minItems": 1,
-                                   "items": {"type": "string", "pattern": "\\S"}}}},
+                                   "items": {"type": "string", "pattern": "\\S"}}},
+                               "display": {"oneOf": [
+                                   {"type": "string", "pattern": "\\{\\}"},
+                                   {"type": "object", "additionalProperties": {"type": "string", "pattern": "\\S"}}]}},
                 "if": {"properties": {"role": {"const": "ask"}}}, "then": {"required": ["question"]},
             },
             "rule": {

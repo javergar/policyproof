@@ -19,6 +19,7 @@ from policyproof.core.syntax import (
     Constraint,
     Define,
     Derived,
+    Display,
     EnumLit,
     EnumSort,
     Expr,
@@ -37,6 +38,8 @@ from policyproof.core.syntax import (
     Rule,
     Sort,
     System,
+    Template,
+    ValuePhrases,
     Var,
     Variable,
     When,
@@ -131,8 +134,8 @@ def policies() -> st.SearchStrategy[Policy]:
     numbered = st.lists(rules(), max_size=4).map(lambda rs: tuple(replace(r, id=f"R{i}") for i, r in enumerate(rs)))
     outcome = st.lists(st.tuples(st.sampled_from(["p", "q", "r"]), st.booleans()), min_size=1, max_size=2,
                        unique_by=lambda t: t[0])
-    outcomes = st.lists(outcome, max_size=3).map(lambda os: tuple(
-        Outcome(f"o{i}", tuple((v, BoolLit(b)) for v, b in a)) for i, a in enumerate(os)))
+    outcomes = st.lists(st.tuples(outcome, st.none() | SHOWN), max_size=3).map(lambda os: tuple(
+        Outcome(f"o{i}", tuple((v, BoolLit(b)) for v, b in a), d) for i, (a, d) in enumerate(os)))
     return st.builds(Policy, name=TEXT, version=TEXT, sorts=st.just((COLOR,)), variables=declarations(),
                      rules=numbered, outcomes=outcomes)
 
@@ -144,10 +147,26 @@ def phrasings(s: Sort) -> st.SearchStrategy[tuple[tuple[Lit, tuple[str, ...]], .
     return st.lists(st.tuples(literals(s), PHRASES), max_size=2, unique_by=lambda t: t[0]).map(tuple)
 
 
+SHOWN = st.text("abc xyz'", min_size=1).filter(str.strip)
+
+
+def displays(s: Sort) -> st.SearchStrategy[Display | None]:
+    """No display, or the shape that fits the sort: a phrase per value, or a template with one `{}`."""
+    if isinstance(s, IntSort | RealSort):
+        shown: st.SearchStrategy[Display] = SHOWN.map(lambda t: Template(t + " {}"))
+    else:
+        shown = st.lists(st.tuples(literals(s), SHOWN), min_size=1, max_size=2, unique_by=lambda t: t[0]).map(
+            lambda ps: ValuePhrases(tuple(ps)))
+    return st.none() | shown
+
+
 def declarations() -> st.SearchStrategy[tuple[Variable, ...]]:
-    """`DECLS`, with phrasings drawn for every variable that may have them (all but the derived `r`)."""
-    return st.tuples(*(st.just(v) if isinstance(v.role, Derived) else phrasings(v.sort).map(
-        lambda ph, v=v: replace(v, phrasings=ph)) for v in DECLS))
+    """`DECLS`, with phrasings drawn for every variable that may have them (all but the derived `r`), and a display
+    drawn for every variable."""
+    def drawn(v: Variable) -> st.SearchStrategy[Variable]:
+        ph = st.just(()) if isinstance(v.role, Derived) else phrasings(v.sort)
+        return st.tuples(ph, displays(v.sort)).map(lambda t: replace(v, phrasings=t[0], display=t[1]))
+    return st.tuples(*(drawn(v) for v in DECLS))
 
 
 FINITE = ("p", "q", "r", "c")

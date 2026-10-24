@@ -189,12 +189,30 @@ type Role = System | Ask | Derived
 
 
 @dataclass(frozen=True, slots=True)
+class ValuePhrases:
+    """How each value of a Bool or enum variable is shown to a policy author: "Came by courier"."""
+
+    phrases: tuple[tuple[Lit, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Template:
+    """How a number is shown to a policy author: text with one `{}` for the value, e.g. "{} days late"."""
+
+    text: str
+
+
+type Display = ValuePhrases | Template
+
+
+@dataclass(frozen=True, slots=True)
 class Variable:
     name: str
     sort: Sort
     role: Role
     description: str
     phrasings: tuple[tuple[Lit, tuple[str, ...]], ...] = ()  # example wordings per value, for readers only
+    display: Display | None = None  # for authors only (the studio); never used by a decision
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +221,7 @@ class Outcome:
 
     name: str
     assignment: tuple[tuple[str, Lit], ...]
+    display: str | None = None  # how the outcome is shown to a policy author: "A refund"
 
 
 @dataclass(frozen=True, slots=True)
