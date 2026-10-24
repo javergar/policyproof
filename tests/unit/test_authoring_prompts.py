@@ -5,7 +5,8 @@ from pathlib import Path
 from conftest import load
 
 from policyproof.authoring.document import parse
-from policyproof.authoring.llm.prompts import extraction_prompt
+from policyproof.authoring.llm.prompts import draft_prompt, extraction_prompt, sentence_prompt, title_prompt
+from policyproof.authoring.ports import Choose, Describe, Situation
 
 SNAPSHOT = Path(__file__).parent.parent / "snapshots" / "authoring_prompts.txt"
 DELIVERY = (Path(__file__).parent.parent / "documents" / "delivery.md").read_text()
@@ -14,8 +15,15 @@ DELIVERY = (Path(__file__).parent.parent / "documents" / "delivery.md").read_tex
 def prompts() -> list[str]:
     doc = parse(DELIVERY)
     couriers = tuple(s.anchor for s in doc.sentences if s.anchor.section == "Couriers")
+    clashes = load("defects/clashes.yaml")
+    situation = Situation(("Came by courier", "3 days late", "Asked for a refund"), couriers[:2],
+                          (("refund", "A refund"), ("nothing", "Nothing")))
     return [extraction_prompt(doc, None, None, ""),
-            extraction_prompt(doc, load("defects/clashes.yaml"), couriers[:1], "Lost parcels matter most.")]
+            extraction_prompt(doc, clashes, couriers[:1], "Lost parcels matter most."),
+            draft_prompt(doc, situation, Choose("refund"), None),
+            draft_prompt(doc, situation, Describe("only if more than 2 days late"), "Breaks approved example e1."),
+            title_prompt(clashes, situation.customer),
+            sentence_prompt(clashes, clashes.rules[1])]
 
 
 def test_prompts_match_the_snapshot():
@@ -26,6 +34,6 @@ def test_prompts_match_the_snapshot():
 
 
 def test_the_prompt_numbers_every_sentence_under_its_heading():
-    whole, _ = prompts()
+    whole = prompts()[0]
     assert "## Couriers\n5. Courier parcels are never refunded." in whole
     assert "code is not policy" not in whole

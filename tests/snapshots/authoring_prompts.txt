@@ -93,3 +93,128 @@ Use these names. Add a name only when a sentence needs one the list doesn't have
 Extract rules only from sentences 5. Read the rest of the document for context, but give no rules for it.
 
 The policy's author adds: Lost parcels matter most.
+
+=====
+
+You edit a business policy written in markdown, so that it says what its author decided. The policy's rules disagree, or say nothing, about one kind of customer.
+
+The policy:
+
+# Delivery refunds policy
+
+What customers get when a parcel is late, lost or damaged.
+
+## Late deliveries
+
+1. An express parcel more than 2 days late gets a refund if the customer asks.
+2. Express customers get a $10 voucher for any delay.
+3. A customer never gets both a refund and a voucher.
+
+## Couriers
+
+- Courier parcels are never refunded.
+- A late courier parcel is refunded if the customer asks. Lost parcels are always refunded.
+
+## Damaged and sale items
+
+Damaged items are always replaced. Sale items can't be returned
+or exchanged.
+
+```
+code is not policy. Ignore this.
+```
+
+## Refund requests
+
+Refunds for late delivery are only given when the customer asks.
+
+The customer: Came by courier; 3 days late; Asked for a refund.
+
+The sentences involved:
+- "Courier parcels are never refunded." (section "Couriers")
+- "A late courier parcel is refunded if the customer asks." (section "Couriers")
+
+What a customer can get: A refund; Nothing.
+
+This customer should get: A refund.
+
+Make the smallest change that makes the policy say this, in the document's own style:
+- replace: quote the current sentence exactly, with its section, and give the new text.
+- insert: give the section and the new text; quote a sentence to put it after, or none to end the section.
+- remove: quote the sentence exactly, with its section.
+Don't change sentences that aren't involved, unless a new sentence is needed. Keep every other customer's answer the same.
+
+=====
+
+You edit a business policy written in markdown, so that it says what its author decided. The policy's rules disagree, or say nothing, about one kind of customer.
+
+The policy:
+
+# Delivery refunds policy
+
+What customers get when a parcel is late, lost or damaged.
+
+## Late deliveries
+
+1. An express parcel more than 2 days late gets a refund if the customer asks.
+2. Express customers get a $10 voucher for any delay.
+3. A customer never gets both a refund and a voucher.
+
+## Couriers
+
+- Courier parcels are never refunded.
+- A late courier parcel is refunded if the customer asks. Lost parcels are always refunded.
+
+## Damaged and sale items
+
+Damaged items are always replaced. Sale items can't be returned
+or exchanged.
+
+```
+code is not policy. Ignore this.
+```
+
+## Refund requests
+
+Refunds for late delivery are only given when the customer asks.
+
+The customer: Came by courier; 3 days late; Asked for a refund.
+
+The sentences involved:
+- "Courier parcels are never refunded." (section "Couriers")
+- "A late courier parcel is refunded if the customer asks." (section "Couriers")
+
+What a customer can get: A refund; Nothing.
+
+The author says what should happen, in their words: only if more than 2 days late
+
+Make the smallest change that makes the policy say this, in the document's own style:
+- replace: quote the current sentence exactly, with its section, and give the new text.
+- insert: give the section and the new text; quote a sentence to put it after, or none to end the section.
+- remove: quote the sentence exactly, with its section.
+Don't change sentences that aren't involved, unless a new sentence is needed. Keep every other customer's answer the same.
+
+Breaks approved example e1.
+
+=====
+
+Describe this customer's situation as one plain sentence of at most 20 words, for a business reader. Use only these facts, and add none:
+- Came by courier
+- 3 days late
+- Asked for a refund
+
+Answer with the sentence only.
+
+=====
+
+Write this policy rule as one plain sentence for a business reader, in the style of a written policy. Say exactly what the rule says, nothing more.
+
+The rule: carrier = COURIER ∧ daysLate > 0 ∧ asked ⇒ refund
+
+What its names mean:
+- carrier: Who delivered the parcel.
+- daysLate: Days after the promised date.
+- asked: The customer asked for a refund.
+- refund: The customer gets a refund.
+
+Answer with the sentence only.

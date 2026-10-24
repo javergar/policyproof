@@ -8,17 +8,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, ModelRetry
-from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, UnexpectedModelBehavior
 from pydantic_ai.models import Model
 from returns.result import Failure, Result, Success
 
 from policyproof.authoring.document import Anchor, Document
 from policyproof.authoring.extraction import Extraction, Link
+from policyproof.authoring.llm._call import run
 from policyproof.authoring.llm.prompts import extraction_prompt
 from policyproof.core._result import unreachable
 from policyproof.core.codec import Data, DecodeError, IllTyped, decode
 from policyproof.core.syntax import CheckedPolicy
-from policyproof.effects.errors import LLMError, Malformed, Refused, Unavailable
+from policyproof.effects.errors import LLMError, Malformed
 from policyproof.effects.llm.exprmodel import Expr
 
 
@@ -140,17 +140,6 @@ def _convert(out: ExtractionOut, doc: Document, vocabulary: CheckedPolicy | None
     return Success(Extraction(policy, links, tuple(numbered[i] for i in listed if i not in cited)))
 
 
-async def _run[T](agent: Agent[None, T], prompt: str) -> Result[T, LLMError]:
-    try:
-        return Success((await agent.run(prompt)).output)
-    except ContentFilterError as e:
-        return Failure(Refused(str(e)))
-    except UnexpectedModelBehavior as e:
-        return Failure(Malformed(str(e)))
-    except ModelAPIError as e:
-        return Failure(Unavailable(str(e)))
-
-
 @dataclass(frozen=True, slots=True)
 class LLMExtractor:
     """An `Extractor` on one pydantic-ai model."""
@@ -170,7 +159,7 @@ class LLMExtractor:
                 case _:
                     return out
 
-        match await _run(agent, "Extract the policy."):
+        match await run(agent, "Extract the policy."):
             case Success(out):
                 return _convert(out, doc, vocabulary, only).alt(Malformed)
             case Failure(e):
