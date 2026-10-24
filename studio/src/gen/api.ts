@@ -29,7 +29,8 @@ export type ItemKind =
   | "inputs_related"
   | "definition"
   | "constraint"
-  | "unlinked";
+  | "unlinked"
+  | "example";
 /**
  * This interface was referenced by `Api`'s JSON-Schema
  * via the `definition` "Level".
@@ -39,7 +40,8 @@ export type Level = "error" | "uncovered" | "warning" | "review";
  * This interface was referenced by `Api`'s JSON-Schema
  * via the `definition` "Action".
  */
-export type Action = Choose | Describe | Dismiss | Background | Decides | Same | Different | RemoveName | AddSentence;
+export type Action =
+  Choose | Describe | Dismiss | Background | Decides | Same | Different | RemoveName | AddSentence | ForgetExample;
 /**
  * This interface was referenced by `Api`'s JSON-Schema
  * via the `definition` "Tone".
@@ -290,6 +292,15 @@ export interface AddSentence {
   kind: "add_sentence";
 }
 /**
+ * The policy's new answer for an approved example customer is right: drop the example.
+ *
+ * This interface was referenced by `Api`'s JSON-Schema
+ * via the `definition` "ForgetExample".
+ */
+export interface ForgetExample {
+  kind: "forget_example";
+}
+/**
  * What one rule says for the customer, next to its sentence.
  *
  * This interface was referenced by `Api`'s JSON-Schema
@@ -377,7 +388,9 @@ export interface RuleDiff {
   hand_fixed: boolean;
   keep: "mine" | "new";
   mine: string[];
+  mine_said: string[];
   new: string[];
+  new_said: string[];
   section: string;
   sentence: string;
 }

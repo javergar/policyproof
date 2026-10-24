@@ -59,6 +59,8 @@ export interface State {
   proposal: ProposalView | null;
   switched: readonly string[];
   editing: { texts: readonly (string | null)[]; seq: number } | null;
+  sent: number; // the editing seq whose wording was last sent to be checked
+  rewording: boolean; // a check of the author's wording is in flight: one at a time, and Accept waits for it
   reextract: { view: ReextractView; keep: readonly Keep[] } | null;
   busy: boolean;
   error: string | null;
@@ -68,7 +70,7 @@ export interface State {
 
 export const init: State = {
   session: null, start: null, history: [], focus: null, split: [], picks: {}, texts: {}, proposal: null,
-  switched: [], editing: null, reextract: null, busy: false, error: null, toast: null, seq: 0,
+  switched: [], editing: null, sent: 0, rewording: false, reextract: null, busy: false, error: null, toast: null, seq: 0,
 };
 
 export const POLL_MS = 2000;
@@ -107,7 +109,13 @@ function proposes(o: Option): boolean {
 
 const none: readonly Cmd[] = [];
 const call = (path: string, body: unknown, purpose: Purpose): Cmd => ({ kind: "call", path, body, purpose });
-const cleared = (s: State): State => ({ ...s, picks: {}, proposal: null, editing: null, switched: [] });
+const cleared = (s: State): State => ({ ...s, picks: {}, proposal: null, editing: null, switched: [], rewording: false });
+
+function reword(s: State): [State, readonly Cmd[]] {
+  if (!s.editing || !s.proposal) return [s, none];
+  return [{ ...s, sent: s.editing.seq, rewording: true },
+    [call("/api/reword", { proposal: s.proposal.id, texts: s.editing.texts }, "reword")]];
+}
 
 function answer(s: State, key: string, option: number): [State, readonly Cmd[]] {
   const item = s.session?.items.find((i) => i.key === key);
@@ -122,7 +130,7 @@ function replied(s: State, purpose: Purpose, outcome: Outcome<Reply>): [State, r
   const r = outcome.value;
   switch (r.kind) {
     case "error":
-      return [{ ...s, busy: false, error: r.message },
+      return [{ ...s, busy: false, error: r.message, rewording: purpose === "reword" ? false : s.rewording },
         purpose === "undo" ? [call("/api/state", undefined, "state")] : none];
     case "start":
       return [{ ...s, busy: false, start: { folder: r.folder, model: r.model, message: r.message, path: "", name: "", text: "" } }, none];
@@ -133,7 +141,11 @@ function replied(s: State, purpose: Purpose, outcome: Outcome<Reply>): [State, r
       return [{ ...base, history: [...s.history, s.session], focus: fresh?.key ?? null }, none];
     }
     case "proposal":
-      if (purpose === "reword") return s.proposal ? [{ ...s, busy: false, proposal: r.proposal }, none] : [s, none];
+      if (purpose === "reword") {
+        if (!s.proposal) return [s, none];
+        const checked = { ...s, busy: false, rewording: false, proposal: r.proposal };
+        return checked.editing && checked.editing.seq !== checked.sent ? reword(checked) : [checked, none];
+      }
       if (Object.keys(s.picks).length === 0) return [{ ...s, busy: false }, none]; // the author chose differently
       return [{ ...s, busy: false, error: null, proposal: r.proposal, switched: [], editing: null }, none];
     case "reextract":
@@ -184,7 +196,7 @@ export function update(s: State, msg: Msg): [State, readonly Cmd[]] {
     case "Edit": {
       if (!s.proposal) return [s, none];
       if (s.editing) return [{ ...s, editing: null }, none];
-      return [{ ...s, seq: s.seq + 1, editing: { texts: s.proposal.changes.map((c) => c.after), seq: s.seq + 1 } }, none];
+      return [{ ...s, seq: s.seq + 1, sent: s.seq + 1, editing: { texts: s.proposal.changes.map((c) => c.after), seq: s.seq + 1 } }, none];
     }
     case "EditText": {
       if (!s.editing || msg.index >= s.editing.texts.length || s.editing.texts[msg.index] === null) return [s, none];
@@ -193,14 +205,14 @@ export function update(s: State, msg: Msg): [State, readonly Cmd[]] {
       return [{ ...s, seq, editing: { texts, seq } }, [{ kind: "later", ms: REWORD_MS, msg: { kind: "RewordDue", seq } }]];
     }
     case "RewordDue":
-      if (!s.editing || !s.proposal || msg.seq !== s.editing.seq) return [s, none];
-      return [s, [call("/api/reword", { proposal: s.proposal.id, texts: s.editing.texts }, "reword")]];
+      if (!s.editing || !s.proposal || msg.seq !== s.editing.seq || s.rewording) return [s, none];
+      return reword(s);
     case "ToggleSwitch": {
       const on = s.switched.includes(msg.name);
       return [{ ...s, switched: on ? s.switched.filter((n) => n !== msg.name) : [...s.switched, msg.name] }, none];
     }
     case "Accept":
-      if (!s.proposal || s.busy) return [s, none];
+      if (!s.proposal || s.busy || s.rewording || (s.editing && s.editing.seq !== s.sent)) return [s, none];
       return [{ ...s, busy: true, error: null }, [call("/api/accept", { proposal: s.proposal.id, switch: s.switched }, "change")]];
     case "Undo": {
       const previous = s.history[s.history.length - 1];

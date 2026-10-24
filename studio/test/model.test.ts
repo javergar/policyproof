@@ -106,7 +106,7 @@ describe("the update loop", () => {
   });
 
   test("extract again lists the diffs and resolves with the author's choices", () => {
-    const reextract = { id: "r1", diffs: [{ sentence: "a", section: "Couriers", mine: ["x"], new: ["y"], hand_fixed: true, keep: "mine" as const }] };
+    const reextract = { id: "r1", diffs: [{ sentence: "a", section: "Couriers", mine: ["x"], new: ["y"], mine_said: ["Never refunded."], new_said: ["Refunded when lost."], hand_fixed: true, keep: "mine" as const }] };
     const [s] = step(loaded(), { kind: "ExtractAgain" },
       { kind: "Replied", purpose: "reextract", outcome: ok({ kind: "reextract", reextract }) });
     expect(s.reextract?.keep).toEqual(["mine"]);
@@ -120,5 +120,30 @@ describe("the update loop", () => {
     const [, cmds] = step(s, { kind: "StartField", field: "name", value: "refunds" }, { kind: "StartField", field: "text", value: "# R" },
       { kind: "StartOpen" });
     expect(calls(cmds)).toEqual([["/api/start", { path: null, name: "refunds", text: "# R" }]]);
+  });
+});
+
+describe("rewording (final review I1)", () => {
+  const editing = () => step(loaded(), { kind: "Split", keys: [LATE.key, LOST.key] }, { kind: "Pick", key: LATE.key, option: 0 },
+    { kind: "Replied", purpose: "proposal", outcome: ok({ kind: "proposal", proposal: proposal() }) }, { kind: "Edit" })[0];
+
+  test("accept waits while the author's wording is being checked", () => {
+    const [typed] = step(editing(), { kind: "EditText", index: 0, text: "Mine." });
+    const [, none] = step(typed, { kind: "Accept" });
+    expect(calls(none)).toEqual([]);
+    const [sent] = step(typed, { kind: "RewordDue", seq: typed.editing?.seq ?? -1 });
+    expect(calls(step(sent, { kind: "Accept" })[1])).toEqual([]);
+    const [back] = step(sent, { kind: "Replied", purpose: "reword", outcome: ok({ kind: "proposal", proposal: proposal({ id: "p2" }) }) });
+    expect(calls(step(back, { kind: "Accept" })[1])).toEqual([["/api/accept", { proposal: "p2", switch: [] }]]);
+  });
+
+  test("one check at a time, and the latest wording is checked last", () => {
+    let [s] = step(editing(), { kind: "EditText", index: 0, text: "First." });
+    [s] = step(s, { kind: "RewordDue", seq: s.editing?.seq ?? -1 });
+    [s] = step(s, { kind: "EditText", index: 0, text: "Second." });
+    const [waiting, none] = step(s, { kind: "RewordDue", seq: s.editing?.seq ?? -1 });
+    expect(calls(none)).toEqual([]);
+    const [, again] = step(waiting, { kind: "Replied", purpose: "reword", outcome: ok({ kind: "proposal", proposal: proposal({ id: "p2" }) }) });
+    expect(calls(again)).toEqual([["/api/reword", { proposal: "p2", texts: ["Second."] }]]);
   });
 });

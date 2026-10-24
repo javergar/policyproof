@@ -49,6 +49,9 @@
         },
         {
           "$ref": "#/$defs/AddSentence"
+        },
+        {
+          "$ref": "#/$defs/ForgetExample"
         }
       ]
     },
@@ -411,6 +414,22 @@
       "title": "ExampleView",
       "type": "object"
     },
+    "ForgetExample": {
+      "description": "The policy's new answer for an approved example customer is right: drop the example.",
+      "properties": {
+        "kind": {
+          "const": "forget_example",
+          "default": "forget_example",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ForgetExample",
+      "type": "object"
+    },
     "GroupAnswer": {
       "properties": {
         "key": {
@@ -586,7 +605,8 @@
         "inputs_related",
         "definition",
         "constraint",
-        "unlinked"
+        "unlinked",
+        "example"
       ],
       "type": "string"
     },
@@ -867,11 +887,25 @@
           "title": "Mine",
           "type": "array"
         },
+        "mine_said": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mine Said",
+          "type": "array"
+        },
         "new": {
           "items": {
             "type": "string"
           },
           "title": "New",
+          "type": "array"
+        },
+        "new_said": {
+          "items": {
+            "type": "string"
+          },
+          "title": "New Said",
           "type": "array"
         },
         "section": {
@@ -888,6 +922,8 @@
         "section",
         "mine",
         "new",
+        "mine_said",
+        "new_said",
         "hand_fixed",
         "keep"
       ],

@@ -16,7 +16,7 @@ from typing import assert_never
 from returns.result import Failure, Result, Success
 
 from policyproof.authoring.document import Anchor, Document, Edit, Insert, Remove, Replace, apply, parse, touched
-from policyproof.authoring.examples import broken
+from policyproof.authoring.examples import Example, broken
 from policyproof.authoring.extraction import Extraction, Link
 from policyproof.authoring.merge import Additions, merge, rename, rule_changes
 from policyproof.authoring.plain import customer_phrases, name_words, outcome_label
@@ -69,6 +69,7 @@ from policyproof.studio.workspace import (
 )
 
 NEEDS_MODEL = "Start the studio with --model to {}."
+OUTSIDE = "The document changed on disk. Use “Extract again” before making changes."
 DECIDES = "This sentence decides what customers get: extract the rules it states."
 
 
@@ -277,7 +278,8 @@ class Session:
     async def refresh(self) -> None:
         ctx = Context.of(self.files.extraction, parse(self.files.text), self.files.workspace)
         await self._phrase(ctx)
-        self.ctx = replace(ctx, titles=dict(self.titles), sentences=dict(self.sentences))
+        self.ctx = replace(ctx, titles=dict(self.titles), sentences=dict(self.sentences),
+                           examples=self.files.examples)
         self.listing = items(self.ctx, new_keys=self.new_keys)
 
     # ---- reading
@@ -312,7 +314,12 @@ class Session:
     # ---- changing the files
 
     async def _write(self, files: Files, banner: w.Banner | None, new_keys: frozenset[str] = frozenset(),
-                     *, undoable: bool = True) -> w.StateReply:
+                     *, undoable: bool = True, disk: str | None = None) -> w.StateReply | w.ErrorReply:
+        """Every write goes through here, so none can overwrite an edit made outside the studio: the document on disk
+        must still be the one last read or written (or `disk`, the digest of the text a re-extraction read)."""
+        on_disk = digest(self.paths.doc.read_text()) if self.paths.doc.exists() else None
+        if on_disk != (disk if disk is not None else self.seen):
+            return w.ErrorReply(OUTSIDE)
         if undoable:
             push_undo(self.paths, self.files)
         save(self.paths, files)
@@ -331,7 +338,7 @@ class Session:
         if version != self.version:
             return w.ErrorReply("The policy changed since this was proposed. Choose again.")
         if self._outside():
-            return w.ErrorReply("The document changed on disk. Use “Extract again” before accepting changes.")
+            return w.ErrorReply(OUTSIDE)
         return None
 
     # ---- answering
@@ -373,6 +380,11 @@ class Session:
                 return await self._remove_name(entry)
             case w.AddSentence():
                 return await self._add_sentence(entry)
+            case w.ForgetExample():
+                gone = set(entry.names)
+                return await self._write(replace(self.files, examples=tuple(
+                    ex for ex in self.files.examples if ex.id not in gone)),
+                    w.Banner((f"Forgot the example: {', '.join(entry.item.facts)}",), (), ()))
             case _:
                 assert_never(action)
 
@@ -454,17 +466,21 @@ class Session:
                                           "and decide that next, or keep editing."))
         else:
             checks.append(w.Check("ok", "Checked against every rule: nothing new conflicts."))
-        if p.broken:
-            for ex in p.broken:
+        already = {ex.id for ex in broken(self.ctx.compiled, self.files.examples)}
+        newly = tuple(ex for ex in p.broken if ex.id not in already)
+        if newly:
+            for ex in newly:
                 checks.append(w.Check("warn", f"The approved example customer “{', '.join(customer_phrases(
                     before_policy, ex.customer))}” would no longer get {labels.get(ex.outcome, ex.outcome)}."))
+        elif already:
+            checks.append(w.Check("ok", "No other approved example customer changes answer."))
         elif self.files.examples:
             n = len(self.files.examples)
             checks.append(w.Check("ok", f"All {n} example customers you approved still get the same answer." if n > 1
                                   else "The example customer you approved still gets the same answer."))
         switches = tuple(s for v in p.additions.variables if (s := _role(v)) is not None)
         return w.ProposalView(pid, _changes(p.edits), tuple(checks), _additions(p.additions), switches,
-                              bool(p.new or p.broken), p.attempts)
+                              bool(p.new or newly), p.attempts)
 
     async def reword(self, req: w.RewordRequest) -> w.Reply:
         o = self.proposals.get(req.proposal)
@@ -529,7 +545,8 @@ class Session:
                       replace(self.files.workspace, fixed=(*self.files.workspace.fixed, *fixed)))
         changed = self._changed_labels(draft.doc, draft.extraction)
         c1 = compile(self.ctx.policy)
-        await self._write(files, None)
+        if isinstance(written := await self._write(files, None), w.ErrorReply):
+            return written
         self.new_keys = frozenset(e.item.key for e in self.listing.entries if self._is_new(e, o.keys, c1))
         self.listing = items(self.ctx, new_keys=self.new_keys)
         new_titles = tuple(e.item.title for e in self.listing.entries if e.item.key in self.new_keys)
@@ -567,15 +584,16 @@ class Session:
             lambda ws: replace(ws, dismissed=(*(x for x in ws.dismissed if x.key != d.key), d))),
             w.Banner((f"Dismissed: {entry.item.title}",), (), ()))
 
-    async def _policy_change(self, policy: Result[CheckedPolicy, object], banner: str) -> w.Reply:
-        match policy:
-            case Success(checked):
-                files = replace(self.files, extraction=replace(self.files.extraction, policy=checked))
-                return await self._write(files, w.Banner((banner,), (), ()))
-            case Failure(errors):
-                return w.ErrorReply(f"That change doesn't fit the policy: {errors}")
-            case _:
-                unreachable()
+    def _examples_renamed(self, old: str, new: str | None) -> tuple[Example, ...]:
+        """The approved examples after a name is merged into `new`, or dropped when `new` is None: their facts follow
+        the policy's names, so the examples file still loads."""
+        out: list[Example] = []
+        for ex in self.files.examples:
+            has_new = any(v == new for v, _ in ex.customer)
+            facts = tuple(sorted((new if v == old else v, x) for v, x in ex.customer
+                                 if v != old or (new is not None and not has_new)))
+            out.append(replace(ex, customer=facts))
+        return tuple(out)
 
     async def _same(self, entry: Entry) -> w.Reply:
         a, b = entry.names
@@ -583,7 +601,8 @@ class Session:
         keep, drop = (b, a) if not variables[a].description and variables[b].description else (a, b)
         match rename(self.files.extraction, drop, keep):
             case Success(ex):
-                return await self._write(replace(self.files, extraction=ex),
+                return await self._write(replace(self.files, extraction=ex,
+                                                 examples=self._examples_renamed(drop, keep)),
                                          w.Banner((f"Merged: {entry.item.title}",), (), ()))
             case Failure(errors):
                 return w.ErrorReply("They can't be merged: " + "; ".join(str(e) for e in errors))
@@ -612,7 +631,16 @@ class Session:
     async def _remove_name(self, entry: Entry) -> w.Reply:
         p = self.ctx.policy
         policy = replace(p, variables=tuple(v for v in p.variables if v.name not in entry.names))
-        return await self._policy_change(check_policy(policy), f"Removed: {entry.item.title}")
+        match check_policy(policy):
+            case Success(checked):
+                (name,) = entry.names
+                files = replace(self.files, extraction=replace(self.files.extraction, policy=checked),
+                                examples=self._examples_renamed(name, None))
+                return await self._write(files, w.Banner((f"Removed: {entry.item.title}",), (), ()))
+            case Failure(errors):
+                return w.ErrorReply("That can't be removed: " + "; ".join(str(e) for e in errors))
+            case _:
+                unreachable()
 
     async def _add_sentence(self, entry: Entry) -> w.Reply:
         (rule,) = entry.rules
@@ -668,11 +696,25 @@ class Session:
 
         def logic(rules: Sequence[Rule]) -> tuple[str, ...]:
             return tuple(pretty(rule_expr(r)) for r in rules)
+
+        async def said(p: CheckedPolicy, rules: Sequence[Rule]) -> tuple[str, ...]:
+            """Each reading in words, so the author can choose without reading a formula."""
+            if self.ports.phraser is None:
+                return ()
+            out: list[str] = []
+            for r in rules:
+                match await self.ports.phraser.sentence(p, r):
+                    case Success(text):
+                        out.append(text)
+                    case _:
+                        return ()
+            return tuple(out)
         rid = f"r{next(self._ids)}"
         self.reextracts[rid] = _Reextract(files, new, tuple(d.anchor for d in diffs), self.version)
         return w.ReextractReply(w.ReextractView(rid, tuple(
-            w.RuleDiff(d.anchor.text, d.anchor.section, logic(d.before), logic(d.after), d.anchor in hand,
-                       "mine" if d.anchor in hand else "new") for d in diffs)))
+            [w.RuleDiff(d.anchor.text, d.anchor.section, logic(d.before), logic(d.after),
+                        await said(files.extraction.policy, d.before), await said(new.policy, d.after),
+                        d.anchor in hand, "mine" if d.anchor in hand else "new") for d in diffs])))
 
     async def resolve(self, req: w.ResolveRequest) -> w.Reply:
         r = self.reextracts.get(req.reextract)
@@ -699,7 +741,7 @@ class Session:
         save_snapshot(self.paths, r.new)
         lost = broken(compile(merged.policy), files.examples)
         warning = tuple(f"Approved example {ex.id} no longer gets the answer you approved." for ex in lost)
-        return await self._write(files, w.Banner(("Extracted again.",), warning, ()))
+        return await self._write(files, w.Banner(("Extracted again.",), warning, ()), disk=digest(r.files.text))
 
 
 @dataclass
@@ -721,6 +763,8 @@ class Studio:
         if req.path:
             doc = (self.folder / req.path).resolve()
         elif req.name and req.text is not None:
+            if self.ports.extractor is None:
+                return w.ErrorReply("A pasted document has no policy yet. " + NEEDS_MODEL.format("extract one"))
             name = req.name.removesuffix(".md").strip()
             if not name or "/" in name or name.startswith("."):
                 return w.ErrorReply("Give the document a simple file name.")

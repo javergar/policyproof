@@ -13,8 +13,10 @@ from dataclasses import dataclass, field, replace
 from typing import assert_never
 
 from policyproof.authoring.document import Anchor, Document
+from policyproof.authoring.examples import Example, holds, to_facts
 from policyproof.authoring.extraction import Extraction
 from policyproof.authoring.plain import customer_phrases, name_words, outcome_label, phrase, verdict
+from policyproof.core.decide import Decided, decide
 from policyproof.core.problems import Clash, Customer, Found, Gap, GaveUp, OutrightConflict, Problems, groups, problems
 from policyproof.core.render import pretty
 from policyproof.core.semantics import free_vars, rule_expr
@@ -59,12 +61,14 @@ class Context:
     workspace: Workspace
     titles: Mapping[Customer, str] = field(default_factory=dict)  # situation titles a model wrote
     sentences: Mapping[str, str] = field(default_factory=dict)  # sentences a model wrote for rules with none
+    examples: tuple[Example, ...] = ()  # the approved example customers, checked on every change
 
     @staticmethod
     def of(extraction: Extraction, doc: Document, workspace: Workspace, *, titles: Mapping[Customer, str] | None = None,
-           sentences: Mapping[str, str] | None = None) -> Context:
+           sentences: Mapping[str, str] | None = None, examples: tuple[Example, ...] = ()) -> Context:
         c = compile(extraction.policy)
-        return Context(extraction, c, problems(c), validate(c), doc, workspace, titles or {}, sentences or {})
+        return Context(extraction, c, problems(c), validate(c), doc, workspace, titles or {}, sentences or {},
+                       examples)
 
     @property
     def policy(self) -> CheckedPolicy:
@@ -379,10 +383,31 @@ def _unlinked(t: _Words, rule: str) -> Entry:
                   lead=f"“{t.sentence(rule)}”")
 
 
-RANK: dict[w.ItemKind, int] = {"clash": 0, "conflict": 0, "gave_up": 1, "gap": 2, "impossible": 3, "unreachable": 3,
+def _example(t: _Words, ex: Example) -> Entry:
+    """An approved example customer the policy no longer proves: the author decides which answer is right."""
+    approved = t.lower(ex.outcome)
+    inputs = {v.name for v in t.p.variables if not isinstance(v.role, Derived)}
+    now = "no single answer"
+    if all(v in inputs for v, _ in ex.customer):
+        d = decide(t.ctx.compiled, to_facts(t.p, ex))
+        if isinstance(d, Decided):
+            now = t.lower(d.outcome)
+    facts = t.facts(tuple((v, x) for v, x in ex.customer if v in t.variables))
+    who = ", ".join(facts)
+    item = _item(f"example:{ex.id}", "example", "error", f"An approved example customer no longer gets {approved}",
+                 facts=facts, lead=f"You approved {approved} for this customer. The policy now gives {now}.",
+                 question="Which is right?",
+                 options=(w.Option(f"Keep what I approved: {approved}", w.Describe(
+                     "", f"A customer with {who} should get {approved}, as approved before."), False),
+                          w.Option("The new answer is right: forget this example", w.ForgetExample(), False)))
+    return Entry(item, (), (), (ex.id,), None, "")
+
+
+RANK: dict[w.ItemKind, int] = {"clash": 0, "conflict": 0, "gave_up": 1, "example": 2, "gap": 2, "impossible": 3,
+                               "unreachable": 3,
                                "uncovered": 4, "near_duplicate": 5, "unused": 5, "disjoint": 5, "overlap": 6,
                                "inputs_related": 6, "definition": 6, "constraint": 6, "unlinked": 7}
-UNDISMISSABLE: frozenset[w.ItemKind] = frozenset({"clash", "conflict", "gave_up", "uncovered"})
+UNDISMISSABLE: frozenset[w.ItemKind] = frozenset({"clash", "conflict", "gave_up", "uncovered", "example"})
 
 
 def items(ctx: Context, *, new_keys: frozenset[str] = frozenset()) -> Listing:
@@ -396,6 +421,7 @@ def items(ctx: Context, *, new_keys: frozenset[str] = frozenset()) -> Listing:
     entries += [e for f in ctx.findings if (e := _finding(t, f)) is not None]
     linked = {link.rule for link in ctx.extraction.links}
     entries += [_unlinked(t, r.id) for r in ctx.policy.rules if r.id not in linked]
+    entries += [_example(t, ex) for ex in ctx.examples if not holds(ctx.compiled, ex)]
     entries.sort(key=lambda e: RANK[e.item.kind])  # stable: clashes stay in group order
     dismissed = {d.key: d for d in ctx.workspace.dismissed}
     out: list[Entry] = []

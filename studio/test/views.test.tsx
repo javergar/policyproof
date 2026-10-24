@@ -99,11 +99,12 @@ describe("the views", () => {
   });
 
   test("extracting again lists each changed sentence with a choice", () => {
-    const reextract = { id: "r1", diffs: [{ sentence: "Courier parcels are never refunded.", section: "Couriers", mine: ["a"], new: ["b"], hand_fixed: true, keep: "mine" as const }] };
+    const reextract = { id: "r1", diffs: [{ sentence: "Courier parcels are never refunded.", section: "Couriers", mine: ["a"], new: ["b"], mine_said: ["Never refunded."], new_said: ["Refunded when lost."], hand_fixed: true, keep: "mine" as const }] };
     const out = html(run(loaded(), [{ kind: "Replied", purpose: "reextract", outcome: ok({ kind: "reextract", reextract }) }]));
     expect(out).toContain("Keep mine");
     expect(out).toContain("Use the new reading");
     expect(out).toContain("You fixed this one");
+    expect(out).toContain("Refunded when lost.");
   });
 
   test("no formula reaches the page outside the logic", () => {

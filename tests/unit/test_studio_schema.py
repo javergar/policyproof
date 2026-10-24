@@ -21,7 +21,8 @@ PROPOSAL = w.ProposalView("p1", (w.Change("replace", "Couriers", "a", "b"),), (w
                           ("The agent will now ask customers: Was it insured?",),
                           (w.Switch("insured", "Was it insured?", "ask"),), False, 1)
 REPLIES = (w.StateReply(STATE), w.ProposalReply(PROPOSAL),
-           w.ReextractReply(w.ReextractView("r1", (w.RuleDiff("a", "Couriers", ("x",), ("y",), True, "mine"),))),
+           w.ReextractReply(w.ReextractView("r1", (w.RuleDiff("a", "Couriers", ("x",), ("y",), ("X",), ("Y",), True,
+                                                               "mine"),))),
            w.OutsideReply(True), w.StartReply("/tmp", False, None), w.ErrorReply("no"))
 
 

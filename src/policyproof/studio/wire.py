@@ -10,7 +10,7 @@ type Tone = Literal["yes", "no", "none"]
 type Level = Literal["error", "uncovered", "warning", "review"]
 type ItemKind = Literal["clash", "conflict", "gap", "gave_up", "uncovered", "near_duplicate", "unused", "disjoint",
                         "impossible", "unreachable", "overlap", "inputs_related", "definition", "constraint",
-                        "unlinked"]
+                        "unlinked", "example"]
 type SentenceState = Literal["plain", "open", "changed", "inserted", "removed", "uncovered", "background"]
 
 
@@ -81,7 +81,15 @@ class AddSentence:
     kind: Literal["add_sentence"] = "add_sentence"
 
 
-type Action = Choose | Describe | Dismiss | Background | Decides | Same | Different | RemoveName | AddSentence
+@dataclass(frozen=True, slots=True)
+class ForgetExample:
+    """The policy's new answer for an approved example customer is right: drop the example."""
+
+    kind: Literal["forget_example"] = "forget_example"
+
+
+type Action = (Choose | Describe | Dismiss | Background | Decides | Same | Different | RemoveName | AddSentence
+               | ForgetExample)
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,8 +237,10 @@ class RuleDiff:
 
     sentence: str
     section: str
-    mine: tuple[str, ...]  # the rules now, as logic (this view is for choosing between two readings)
+    mine: tuple[str, ...]  # the rules now, as logic: shown only under "Show the logic"
     new: tuple[str, ...]
+    mine_said: tuple[str, ...]  # the same rules as plain sentences a model wrote; empty without one
+    new_said: tuple[str, ...]
     hand_fixed: bool  # the author changed these rules since the last full extraction
     keep: Literal["mine", "new"]  # the default
 

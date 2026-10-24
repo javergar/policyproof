@@ -8,7 +8,7 @@ from studio_fixtures import EXTRACTION, INTRO, POLICY, S4, S5, S6, S9, S10, TEXT
 
 from policyproof.authoring.document import Anchor, Replace
 from policyproof.authoring.extraction import Extraction, Link
-from policyproof.core.syntax import And, CheckedPolicy, Cmp, EnumLit, IntLit, Not, Var, When
+from policyproof.core.syntax import And, Ask, BoolSort, CheckedPolicy, Cmp, EnumLit, IntLit, Not, Var, Variable, When
 from policyproof.effects.errors import Unavailable
 from policyproof.studio import wire as w
 from policyproof.studio.session import Ports, Session, Studio
@@ -233,3 +233,141 @@ def test_a_problem_that_was_already_there_is_not_new(tmp_path):
     late = [i for i in view.items if i.kind == "clash"]
     assert late and not any(i.new for i in late)  # the late-courier clash was there before, under another rule id
     assert view.banner is not None and view.banner.new == ()
+
+
+# ---- final review fixes
+
+EDITED = TEXT + "\nA sentence from the author's editor.\n"
+
+
+def edited_outside(s: Session) -> None:
+    s.paths.doc.write_text(EDITED)
+
+
+def test_no_write_overwrites_an_outside_edit(tmp_path):
+    """C1: dismiss, background, undo and resolve all refuse while the document changed on disk."""
+    s = opened(tmp_path, ports(extracted=(GOOD_PART, FULL_AFTER_FIX)))
+    run(s.accept(w.AcceptRequest(proposal(s).id, ())))
+    edited_outside(s)
+    uncovered = next(k for k in keys(s) if k.startswith("uncovered:"))
+    for reply in (run(s.dismiss(w.DismissRequest("constraint:C9", "Exactly right"))),
+                  run(s.answer(w.AnswerRequest(uncovered, 1, ""))),
+                  run(s.undo())):
+        assert isinstance(reply, w.ErrorReply) and "Extract again" in reply.message
+        assert s.paths.doc.read_text() == EDITED
+
+
+def test_resolve_refuses_an_edit_made_after_extracting_again(tmp_path):
+    s = opened(tmp_path, ports(extracted=(FULL_AFTER_FIX,)))
+    edited_outside(s)
+    r = run(s.extract_again())
+    assert isinstance(r, w.ReextractReply)
+    s.paths.doc.write_text(EDITED + "\nAnother one.\n")
+    reply = run(s.resolve(w.ResolveRequest(r.reextract.id, tuple(d.keep for d in r.reextract.diffs))))
+    assert isinstance(reply, w.ErrorReply)
+    assert s.paths.doc.read_text().endswith("Another one.\n")
+
+
+def test_resolve_takes_the_outside_edit(tmp_path):
+    s = opened(tmp_path, ports(extracted=(FULL_AFTER_FIX,)))
+    edited_outside(s)
+    r = run(s.extract_again())
+    assert isinstance(r, w.ReextractReply)
+    view = state(run(s.resolve(w.ResolveRequest(r.reextract.id, tuple(d.keep for d in r.reextract.diffs)))))
+    assert s.paths.doc.read_text() == EDITED and not view.outside
+
+
+INSURED = Variable("insured", BoolSort(), Ask("Was the parcel insured?"), "The parcel was insured.")
+
+
+def with_insured(tmp_path) -> Session:
+    policy = CheckedPolicy(replace(POLICY, variables=(*POLICY.variables, INSURED)))
+    paths = Paths.of(tmp_path / "couriers.md")
+    paths.doc.write_text(TEXT)
+    ex = replace(EXTRACTION, policy=policy)
+    save(paths, Files(TEXT, ex, (), Workspace.empty(TEXT)))
+    save_snapshot(paths, ex)
+    part = replace(GOOD_PART, policy=CheckedPolicy(replace(GOOD_PART.policy, variables=policy.variables)))
+    return run(Session.open(paths, ports(extracted=(part,)))).unwrap()
+
+
+def test_removing_a_name_keeps_the_examples_loadable(tmp_path):
+    """C2: an approved example's facts follow a removed name."""
+    s = with_insured(tmp_path)
+    run(s.accept(w.AcceptRequest(proposal(s).id, ())))
+    files = load(s.paths).unwrap()
+    assert files is not None and any(v == "insured" for ex in files.examples for v, _ in ex.customer)
+    state(run(s.answer(w.AnswerRequest("unused:insured", 0, ""))))
+    again = load(s.paths)
+    assert isinstance(again, Success)
+    files = again.unwrap()
+    assert files is not None and not any(v == "insured" for ex in files.examples for v, _ in ex.customer)
+
+
+def test_merging_names_renames_the_examples_facts(tmp_path):
+    s = with_insured(tmp_path)
+    run(s.accept(w.AcceptRequest(proposal(s).id, ())))
+    entry = s._entry("unused:insured")
+    assert entry is not None
+    merged = run(s._same(replace(entry, names=("lost", "insured"))))
+    assert isinstance(merged, w.StateReply)
+    files = load(s.paths).unwrap()
+    assert files is not None and all(v != "insured" for ex in files.examples for v, _ in ex.customer)
+
+
+def test_telling_names_apart_adds_to_both_descriptions(tmp_path):
+    s = with_insured(tmp_path)
+    entry = s._entry("unused:insured")
+    assert entry is not None
+    state(run(s._different(replace(entry, names=("lost", "insured")), "one is about insurance")))
+    files = load(s.paths).unwrap()
+    assert files is not None
+    p = files.extraction.policy
+    assert all("one is about insurance" in v.description for v in p.variables if v.name in ("lost", "insured"))
+
+
+def test_a_rule_not_in_the_document_can_be_added_to_it(tmp_path):
+    paths = Paths.of(tmp_path / "couriers.md")
+    paths.doc.write_text(TEXT)
+    ex = replace(EXTRACTION, links=tuple(link for link in EXTRACTION.links if link.rule != "C10"))
+    save(paths, Files(TEXT, ex, (), Workspace.empty(TEXT)))
+    p = ports()
+    p = replace(p, phraser=Phraser(Failure(Unavailable("off")), Success("Post parcels are refunded only when lost.")))
+    s = run(Session.open(paths, p)).unwrap()
+    view = state(run(s.answer(w.AnswerRequest("unlinked:C10", 0, ""))))
+    assert "Post parcels are refunded only when lost." in paths.doc.read_text()
+    assert "unlinked:C10" not in {i.key for i in view.items}
+
+
+def test_pasting_without_a_model_writes_nothing(tmp_path):
+    """I5: the pasted file is written only when it can be opened."""
+    studio = Studio(tmp_path, Ports())
+    reply = run(studio.start(w.StartRequest(None, "pasted", TEXT)))
+    assert isinstance(reply, w.ErrorReply) and "--model" in reply.message
+    assert not (tmp_path / "pasted.md").exists()
+
+
+def test_a_broken_example_is_an_item_until_answered(tmp_path):
+    """I3: an approved example the policy no longer proves stays on the list, and doesn't make proposals risky."""
+    s = opened(tmp_path, ports(extracted=(GOOD_PART, FULL_AFTER_FIX)))
+    run(s.accept(w.AcceptRequest(proposal(s).id, ())))
+    r = run(s.extract_again())
+    assert isinstance(r, w.ReextractReply)
+    view = state(run(s.resolve(w.ResolveRequest(r.reextract.id, ("new",)))))
+    broken = [i for i in view.items if i.kind == "example"]
+    assert len(broken) == 1 and broken[0].level == "error"
+    forget = next(n for n, o in enumerate(broken[0].options) if o.action.kind == "forget_example")
+    view = state(run(s.answer(w.AnswerRequest(broken[0].key, forget, ""))))
+    assert not any(i.kind == "example" for i in view.items) and view.examples == ()
+
+
+def test_extract_again_says_each_reading_in_words(tmp_path):
+    """I4: an author chooses between two readings without reading a formula."""
+    p = replace(ports(extracted=(GOOD_PART, FULL_AFTER_FIX)),
+                phraser=Phraser(Failure(Unavailable("off")), Success("Courier parcels never get a refund.")))
+    s = opened(tmp_path, p)
+    run(s.accept(w.AcceptRequest(proposal(s).id, ())))
+    r = run(s.extract_again())
+    assert isinstance(r, w.ReextractReply)
+    (diff,) = r.reextract.diffs
+    assert diff.new_said == ("Courier parcels never get a refund.",) and diff.mine_said

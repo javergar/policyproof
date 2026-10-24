@@ -1,18 +1,12 @@
-// The shell around the pure loop: one useReducer holds the state, and an effect runs the commands each update
-// returns, turning their results back into messages.
+// The shell around the pure loop: one useReducer holds the state and the commands not yet run; an effect runs them
+// and their results come back as messages.
 import { useEffect, useReducer } from "react";
 import { createRoot } from "react-dom/client";
 import { call, pageToken } from "./api";
-import { type Cmd, init, type Msg, type State, update } from "./model";
+import { start, step } from "./loop";
+import type { Cmd, Msg } from "./model";
 import "./styles.css";
 import { App } from "./views/App";
-
-type Loop = { state: State; cmds: readonly Cmd[]; n: number };
-
-function step(loop: Loop, msg: Msg): Loop {
-  const [state, cmds] = update(loop.state, msg);
-  return { state, cmds, n: loop.n + 1 };
-}
 
 const token = pageToken();
 
@@ -28,9 +22,14 @@ function run(cmd: Cmd, dispatch: (m: Msg) => void): void {
 }
 
 function Studio() {
-  const [loop, dispatch] = useReducer(step, { state: init, cmds: [], n: 0 });
+  const [loop, dispatch] = useReducer(step, start);
   useEffect(() => dispatch({ kind: "Init" }), []);
-  useEffect(() => { for (const c of loop.cmds) run(c, dispatch); }, [loop.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (loop.pending.length === 0) return;
+    const todo = loop.pending;
+    dispatch({ kind: "Ran", count: todo.length });
+    for (const c of todo) run(c, dispatch);
+  }, [loop.pending]);
   return <App state={loop.state} dispatch={dispatch} />;
 }
 
