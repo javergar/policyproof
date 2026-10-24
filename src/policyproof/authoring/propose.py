@@ -13,13 +13,23 @@ from typing import assert_never
 from returns.result import Failure, Result, Success
 
 from policyproof.authoring.document import Document, Edit, apply, gone, touched
-from policyproof.authoring.examples import Example, broken, holds
+from policyproof.authoring.examples import Example, broken
 from policyproof.authoring.extraction import Extraction
 from policyproof.authoring.merge import Additions, additions, merge
 from policyproof.authoring.plain import customer_phrases, outcome_label
 from policyproof.authoring.ports import Answer, Choose, Describe, Drafter, Extractor, Situation
 from policyproof.core._result import unreachable
-from policyproof.core.problems import Clash, Customer, Found, Gap, GaveUp, OutrightConflict, Problems, problems
+from policyproof.core.problems import (
+    Clash,
+    Customer,
+    Found,
+    Gap,
+    GaveUp,
+    OutrightConflict,
+    Problems,
+    decides,
+    problems,
+)
 from policyproof.core.problems import still_a_problem as _still
 from policyproof.core.solver import Compiled, Sat, check, compile
 from policyproof.core.syntax import CheckedPolicy, Derived
@@ -159,11 +169,7 @@ async def _evaluate(state: Draft, before: Problems, target: Sequence[int], edits
     fixes = tuple(i for i, f in enumerate(before.found) if not _still_a_problem(c2, f))
     still_open = tuple(i for i in target if i not in fixes)
     new = tuple(f for f in after.found if not isinstance(f, GaveUp) and not _still_a_problem(c1, f))
-    answered = None
-    if outcome is not None:
-        inputs = _inputs(merged.policy)
-        answered = all(holds(c2, Example("target", tuple((v, x) for v, x in _witness_of(before.found[i])
-                                                          if v in inputs), outcome)) for i in target)
+    answered = None if outcome is None else all(decides(c2, _witness_of(before.found[i]), outcome) for i in target)
     return Success(Proposal(edits, Draft(doc, merged, state.examples), fixes, still_open, new,
                             broken(c2, state.examples), additions(state.extraction.policy, merged.policy),
                             answered, attempts))

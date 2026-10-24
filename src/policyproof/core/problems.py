@@ -10,8 +10,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import assert_never
 
-from policyproof.core.decide import Decided, decide
-from policyproof.core.facts import Answered, Fact, Facts, FromSystem, facts
 from policyproof.core.semantics import free_vars, rule_expr
 from policyproof.core.solver import (
     Compiled,
@@ -227,30 +225,35 @@ def problems(c: Compiled, *, cap: int = DEFAULT_CAP) -> Problems:
     return Problems(tuple(ordered), clashes_done and gaps_done)
 
 
-def _witness_facts(c: Compiled, witness: Customer) -> Facts:
-    roles = {v.name: v.role for v in c.policy.variables}
-    fs: list[Fact] = []
-    for var, value in witness:
-        match roles.get(var):
-            case System():
-                fs.append(Fact(var, value, FromSystem("witness")))
-            case Ask(question):
-                fs.append(Fact(var, value, Answered(question, "witness")))
-            case _:
-                pass  # a variable the policy no longer has as an input
-    return facts(*fs)
+def _known(c: Compiled, customer: Customer) -> list[Expr]:
+    """The customer's facts about variables `c` still has as inputs: a fix may have dropped or added some."""
+    inputs = _inputs(c)
+    return [Cmp("eq", Var(v), x) for v, x in customer if v in inputs]
 
 
 def still_a_problem(c: Compiled, f: Clash | Gap) -> bool:
-    """Whether a problem found on some version of a policy is still a problem on `c` (judged on its witness)."""
+    """Whether a problem found on some version of a policy is still a problem on `c`, judged over every completion of
+    its witness: a fix may add a question the old witness doesn't answer.
+
+    A clash stays when the rules still can't hold for any completion; a gap stays when some completion is still
+    undecided. When the solver gives up, the problem is kept."""
     match f:
         case Clash(witness=witness):
             known = {v.name for v in c.policy.variables}
             return _unsat(c, [r.id for r in c.policy.rules], tuple((v, x) for v, x in witness if v in known))
         case Gap(witness=witness):
-            return not isinstance(decide(c, _witness_facts(c, witness)), Decided)
+            return not isinstance(undecided(c, _inputs(c), given=_known(c, witness)), Unsat)
         case _:
             assert_never(f)
+
+
+def decides(c: Compiled, customer: Customer, outcome: str) -> bool:
+    """Whether every completion of the customer meets the rules and proves `outcome` (and at least one does)."""
+    given = _known(c, customer)
+    inputs = _inputs(c)
+    return (isinstance(decidable(c, inputs, given=given, outcomes=[outcome]), Sat)
+            and isinstance(undecided(c, inputs, given=given, outcomes=[outcome]), Unsat)
+            and isinstance(totality(c, inputs, given=given), Unsat))
 
 
 def _rules_of(f: Found) -> frozenset[str]:

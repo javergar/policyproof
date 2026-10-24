@@ -9,12 +9,13 @@ from policyproof.core.problems import (
     OutrightConflict,
     Problems,
     Says,
+    decides,
     groups,
     problems,
     still_a_problem,
 )
 from policyproof.core.solver import Unknown, compile
-from policyproof.core.syntax import BoolLit, EnumLit, IntLit
+from policyproof.core.syntax import And, BoolLit, EnumLit, IntLit
 
 T, F = BoolLit(True), BoolLit(False)
 COURIER = EnumLit("Carrier", "COURIER")
@@ -98,3 +99,31 @@ def test_still_a_problem_holds_where_found():
         for f in problems(c).found:
             assert isinstance(f, Clash | Gap)
             assert still_a_problem(c, f)
+
+
+def insured_fix(both: bool = True):
+    """gap.yaml after a fix that asks whether the parcel was insured. With `both`, either answer is decided."""
+    from dataclasses import replace
+
+    from policyproof.core.syntax import Ask, BoolSort, CheckedPolicy, Not, Outcome, Var, Variable, When
+    p = load("defects/gap.yaml")
+    insured = Variable("insured", BoolSort(), Ask("Was the parcel insured?"), "The parcel was insured.")
+    rules = (*p.rules, When("G2", And((Not(Var("late")), Var("insured"))), Var("refund")))
+    if both:
+        rules = (*rules, When("G3", And((Not(Var("late")), Not(Var("insured")))), Not(Var("refund"))))
+    outcomes = (*p.outcomes, Outcome("nothing", (("refund", F),)))
+    return compile(CheckedPolicy(replace(p, variables=(*p.variables, insured), rules=rules, outcomes=outcomes)))
+
+
+def test_a_gap_closed_by_a_new_question_is_no_longer_a_problem():
+    [gap] = problems(compile(load("defects/gap.yaml"))).found
+    assert isinstance(gap, Gap)
+    assert not still_a_problem(insured_fix(), gap)
+    assert still_a_problem(insured_fix(both=False), gap)  # an uninsured parcel that wasn't late is still undecided
+
+
+def test_decides_judges_every_completion():
+    [gap] = problems(compile(load("defects/gap.yaml"))).found
+    assert isinstance(gap, Gap)
+    assert not decides(insured_fix(), gap.witness, "refund")  # it depends on the new question now
+    assert decides(compile(load("defects/gap.yaml")), (("late", T),), "refund")

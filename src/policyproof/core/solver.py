@@ -280,45 +280,57 @@ def _witness(c: Compiled, s: z3.Solver, inputs: frozenset[str]) -> SatResult:
             return Unknown(s.reason_unknown())
 
 
-def totality(c: Compiled, inputs: frozenset[str], *, blocked: Sequence[frozenset[str]] = ()) -> SatResult:
+def totality(c: Compiled, inputs: frozenset[str], *, blocked: Sequence[frozenset[str]] = (),
+             given: Sequence[Expr] = ()) -> SatResult:
     """`Sat(witness)` when some values of `inputs` that meet the rules about inputs alone leave no values of the
     other variables that meet every rule: the policy has no answer for that case. `Unsat` when it always has one.
 
     Each `blocked` set of rule ids must be able to hold together for the witness, so a clash among exactly those rules
-    is never found again (the problem finder enumerates distinct clashes this way)."""
+    is never found again (the problem finder enumerates distinct clashes this way). The witness meets `given`."""
     domain, rest, others = _split(c, inputs)
     s = _solver(c)
     s.add(*domain)
     s.add(_forall(others, z3.Not(rest, c.ctx)))
     for ids in blocked:
         s.add(_exists(others, z3.And(*[c.rules[i] for i in ids], c.ctx)))
+    s.add(*[to_z3(c, g) for g in given])
     return _witness(c, s, inputs)
 
 
-def undecided(c: Compiled, inputs: frozenset[str], *, blocked: Sequence[Expr] = ()) -> SatResult:
-    """`Sat(witness)` when some values of `inputs` meet every rule yet prove no outcome: for each outcome, some values
-    of the other variables meet the rules without it. `Unsat` when every case is decided, or there are no outcomes.
-    Each `blocked` expression is ruled out for the witness."""
-    if not c.policy.outcomes:
+def _outcomes(c: Compiled, names: Sequence[str] | None) -> list[Outcome]:
+    return [o for o in c.policy.outcomes if names is None or o.name in names]
+
+
+def undecided(c: Compiled, inputs: frozenset[str], *, blocked: Sequence[Expr] = (), given: Sequence[Expr] = (),
+              outcomes: Sequence[str] | None = None) -> SatResult:
+    """`Sat(witness)` when some values of `inputs` that meet `given` meet every rule yet prove none of `outcomes`
+    (default: every outcome): for each, some values of the other variables meet the rules without it. `Unsat` when
+    every such case is decided, or there are no outcomes. Each `blocked` expression is ruled out for the witness."""
+    chosen = _outcomes(c, outcomes)
+    if not chosen:
         return Unsat(frozenset())
     domain, rest, others = _split(c, inputs)
     s = _solver(c)
     s.add(*domain)
     s.add(_exists(others, rest))
-    for o in c.policy.outcomes:
+    for o in chosen:
         s.add(_exists(others, z3.And(rest, z3.Not(_outcome(c, o)))))
     s.add(*[z3.Not(to_z3(c, b)) for b in blocked])
+    s.add(*[to_z3(c, g) for g in given])
     return _witness(c, s, inputs)
 
 
-def decidable(c: Compiled, inputs: frozenset[str], *, given: Sequence[Expr]) -> SatResult:
-    """`Sat(witness)` when some values of `inputs` that meet `given` and every rule prove an outcome."""
-    if not c.policy.outcomes:
+def decidable(c: Compiled, inputs: frozenset[str], *, given: Sequence[Expr],
+              outcomes: Sequence[str] | None = None) -> SatResult:
+    """`Sat(witness)` when some values of `inputs` that meet `given` and every rule prove one of `outcomes`
+    (default: any outcome)."""
+    chosen = _outcomes(c, outcomes)
+    if not chosen:
         return Unsat(frozenset())
     domain, rest, others = _split(c, inputs)
     s = _solver(c)
     s.add(*domain)
     s.add(_exists(others, rest))
     s.add(*[to_z3(c, g) for g in given])
-    s.add(z3.Or(*[_forall(others, z3.Implies(rest, _outcome(c, o))) for o in c.policy.outcomes], c.ctx))
+    s.add(z3.Or(*[_forall(others, z3.Implies(rest, _outcome(c, o))) for o in chosen], c.ctx))
     return _witness(c, s, inputs)
