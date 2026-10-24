@@ -111,7 +111,7 @@ def test_reword_skips_the_drafter():
 def test_approve_saves_examples():
     p = run(propose(state(), BEFORE, (LATE,), Choose("refund"), drafter=Drafter([Success(GOOD_EDIT)]),
                     extractor=Extractor([Success(GOOD_PART)]))).unwrap()
-    approved = approve(state(), p, BEFORE, {LATE: "refund"})
+    approved = approve(state(), p, BEFORE, {LATE: "refund"}).unwrap()
     [example] = approved.examples
     assert example.outcome == "refund" and holds(compile(approved.extraction.policy), example)
     assert approved.doc == p.after.doc
@@ -144,15 +144,15 @@ def test_a_replacement_without_a_period_is_extracted_not_dropped():
     assert "C5" not in rules and "C6" in rules
 
 
-def test_a_gap_closed_by_a_new_question_counts_as_fixed():
-    """I1: the natural answer to a gap is often a new question; the old customer doesn't say, so judge every answer."""
+def insured_proposal():
+    """The gap in gap.yaml (a parcel that isn't late) closed by a new question: was it insured?"""
     from policyproof.authoring.document import Insert
     from policyproof.authoring.ports import Describe
     from policyproof.core.syntax import Ask, BoolSort, Outcome, Variable
 
     gap_policy = load("defects/gap.yaml")
     doc = parse("## Late parcels\n\nLate parcels get a refund.\n")
-    base = Extraction(gap_policy, (Link("G1", doc.sentences[0].anchor),), ())
+    draft = Draft(doc, Extraction(gap_policy, (Link("G1", doc.sentences[0].anchor),), ()), ())
     before = problems(compile(gap_policy))
     text = "A parcel that isn't late is refunded only if it was insured."
     insured = Variable("insured", BoolSort(), Ask("Was the parcel insured?"), "The parcel was insured.")
@@ -162,7 +162,27 @@ def test_a_gap_closed_by_a_new_question_counts_as_fixed():
                                        When("b", And((Not(Var("late")), Not(Var("insured")))), Not(Var("refund"))))))
     extractor = Extractor([Success(Extraction(new, (Link("a", Anchor("Late parcels", text)),
                                                     Link("b", Anchor("Late parcels", text))), ()))])
-    p = run(propose(Draft(doc, base, ()), before, (0,), Describe("it depends on whether it was insured"),
+    p = run(propose(draft, before, (0,), Describe("it depends on whether it was insured"),
                     drafter=Drafter([Success((Insert("Late parcels", None, text),))]), extractor=extractor)).unwrap()
+    return draft, before, p
+
+
+def test_a_gap_closed_by_a_new_question_counts_as_fixed():
+    """I1: the natural answer to a gap is often a new question; the old customer doesn't say, so judge every answer."""
+    _, _, p = insured_proposal()
     assert p.still_open == () and p.fixes == (0,) and p.new == () and p.attempts == 1
     assert [v.name for v in p.additions.variables] == ["insured"]
+
+
+def test_approve_completes_a_customer_the_fix_asks_more_of():
+    """I4: the saved example must decide its outcome, so a new question gets an answer that proves it."""
+    draft, before, p = insured_proposal()
+    approved = approve(draft, p, before, {0: "refund"}).unwrap()
+    [example] = approved.examples
+    assert dict(example.customer)["insured"] == BoolLit(True)
+    assert holds(compile(approved.extraction.policy), example)
+
+
+def test_approve_refuses_an_answer_the_policy_cant_give():
+    draft, before, p = insured_proposal()
+    assert isinstance(approve(draft, p, before, {0: "jackpot"}), Failure)

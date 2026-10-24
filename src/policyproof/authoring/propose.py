@@ -13,7 +13,7 @@ from typing import assert_never
 from returns.result import Failure, Result, Success
 
 from policyproof.authoring.document import Document, Edit, apply, gone, touched
-from policyproof.authoring.examples import Example, broken
+from policyproof.authoring.examples import Example, broken, holds
 from policyproof.authoring.extraction import Extraction
 from policyproof.authoring.merge import Additions, Changed, additions, merge
 from policyproof.authoring.plain import customer_phrases, outcome_label
@@ -31,8 +31,8 @@ from policyproof.core.problems import (
     problems,
 )
 from policyproof.core.problems import still_a_problem as _still
-from policyproof.core.solver import Compiled, Sat, check, compile
-from policyproof.core.syntax import CheckedPolicy, Derived
+from policyproof.core.solver import Compiled, Sat, check, compile, decidable
+from policyproof.core.syntax import CheckedPolicy, Cmp, Derived, Var
 from policyproof.core.typecheck import SortError
 from policyproof.effects.errors import LLMError
 
@@ -258,16 +258,32 @@ def _example_id(customer: Customer, taken: set[str]) -> str:
     return out
 
 
-def approve(state: Draft, p: Proposal, before: Problems, answers: Mapping[int, str]) -> Draft:
-    """The proposal's state, plus one approved example per fixed problem the author answered, from its customer."""
-    inputs = _inputs(p.after.extraction.policy)
+def approve(state: Draft, p: Proposal, before: Problems, answers: Mapping[int, str]) -> Result[Draft, str]:
+    """The proposal's state, plus one approved example per fixed problem the author answered.
+
+    An example's facts must prove its outcome (spec Calls 2), so the problem's customer is completed by Z3 with
+    values that do, for any question the fix added. An answer the new policy can't give for that customer fails."""
+    policy = p.after.extraction.policy
+    c2 = compile(policy)
+    inputs = frozenset(_inputs(policy))
+    outcomes = {o.name for o in policy.outcomes}
     taken = {ex.id for ex in state.examples}
     added: list[Example] = []
     for i in sorted(answers):
         if i not in p.fixes:
             continue
-        witness = tuple((v, x) for v, x in _witness_of(before.found[i]) if v in inputs)
-        ex_id = _example_id(_customer_of(before.found[i]), taken)
-        taken.add(ex_id)
-        added.append(Example(ex_id, witness, answers[i]))
-    return replace(p.after, examples=(*state.examples, *added))
+        outcome = answers[i]
+        if outcome not in outcomes:
+            return Failure(f"the policy has no outcome {outcome!r}")
+        given = [Cmp("eq", Var(v), x) for v, x in _witness_of(before.found[i]) if v in inputs]
+        match decidable(c2, inputs, given=given, outcomes=[outcome]):
+            case Sat(model):
+                customer = tuple(sorted(model.items()))
+            case _:
+                return Failure(f"no customer like this one gets {outcome!r} under the changed policy")
+        ex = Example(_example_id(_customer_of(before.found[i]), taken), customer, outcome)
+        if not holds(c2, ex):
+            return Failure(f"example {ex.id} doesn't decide {outcome!r} under the changed policy")
+        taken.add(ex.id)
+        added.append(ex)
+    return Success(replace(p.after, examples=(*state.examples, *added)))
