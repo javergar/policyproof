@@ -89,6 +89,14 @@ forbidden_modules = ["policyproof.effects.llm", "policyproof.effects.jev", "pyda
 [[tool.importlinter.contracts]]
 name = "Authoring's document, plain words, examples and merging are pure: the core and guards only"
 type = "forbidden"
-source_modules = ["policyproof.authoring.document", "policyproof.authoring.plain", "policyproof.authoring.examples"]
+source_modules = ["policyproof.authoring.document", "policyproof.authoring.plain", "policyproof.authoring.examples",
+                  "policyproof.authoring.extraction", "policyproof.authoring.merge"]
 forbidden_modules = ["policyproof.effects", "policyproof.eval", "pydantic", "pydantic_ai", "boto3", "botocore",
                      "typesafe_sdk", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "Authoring ports and proposals need no model SDK"
+type = "forbidden"
+source_modules = ["policyproof.authoring.ports"]
+forbidden_modules = ["policyproof.authoring.llm", "policyproof.effects.llm", "policyproof.effects.jev", "pydantic",
+                     "pydantic_ai", "boto3", "botocore", "typesafe_sdk", "httpx"]
