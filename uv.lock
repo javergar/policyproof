@@ -422,6 +422,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+extract = [
+    { name = "pydantic-ai-slim" },
+]
 jev = [
     { name = "pydantic-ai-slim", extra = ["typesafe"] },
 ]
@@ -443,6 +446,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pydantic-ai-slim", marker = "extra == 'extract'", specifier = ">=2.54" },
     { name = "pydantic-ai-slim", marker = "extra == 'llm'", specifier = ">=2.54" },
     { name = "pydantic-ai-slim", extras = ["typesafe"], marker = "extra == 'jev'", specifier = ">=2.54" },
     { name = "pyyaml", specifier = ">=6" },

@@ -1,0 +1,95 @@
+You turn a business policy, written for people, into rules a solver can check. The whole document is below, every sentence numbered, under its heading.
+
+## Delivery refunds policy
+1. What customers get when a parcel is late, lost or damaged.
+
+## Late deliveries
+2. An express parcel more than 2 days late gets a refund if the customer asks.
+3. Express customers get a $10 voucher for any delay.
+4. A customer never gets both a refund and a voucher.
+
+## Couriers
+5. Courier parcels are never refunded.
+6. A late courier parcel is refunded if the customer asks.
+7. Lost parcels are always refunded.
+
+## Damaged and sale items
+8. Damaged items are always replaced.
+9. Sale items can't be returned or exchanged.
+
+## Refund requests
+10. Refunds for late delivery are only given when the customer asks.
+
+How to write the policy:
+- sorts: a choice between named values, e.g. {"name": "Carrier", "values": ["POST", "COURIER"]}.
+- variables: every fact a rule uses. Each has a name (letters and digits, camelCase), a sort (Bool, Int, Real or a sort's name), a role and a description of what it means, literally.
+  - role "system": the business's own systems know it (orders, tracking, payments). Never asked.
+  - role "ask": only the customer can say. Give the question the agent asks, in plain words.
+  - role "derived": decided by the rules, e.g. whether the customer gets a refund.
+  - display: how an author reads each value. For Bool and choice variables, a phrase per value ({"true": "Asked for a refund", "false": "Didn't ask for a refund"}); for numbers, text with one {} ("{} days late").
+- rules: each cites the number of the sentence it comes from. A sentence may give several rules.
+  - kind "when": when `when` holds, `then` holds. Most sentences are this.
+  - kind "define": `var` holds exactly when `as` holds. Only when the sentence really says "only if" or "means".
+  - kind "constraint": a fact about the world that always holds, e.g. days late is never negative.
+- Expressions: a variable's name; true/false, numbers, or a choice value's name; {"not": e}; {"and": [e, ...]}; {"or": [e, ...]}; {"implies": [a, b]}; {"iff": [a, b]}; {"eq": [a, b]} and likewise ne, lt, le, gt, ge; {"add": [...]}, {"sub": [a, b]}, {"mul": [...]}; {"in": [e, [value, ...]]}; reals as {"real": "2.5"}.
+- outcomes: what a customer can end up with, each a name, an assignment of derived variables to values, and a display ("A refund"). Give an outcome for every result the document describes, including getting nothing.
+- Only state what a sentence says. Don't infer a fact the document doesn't state.
+- A sentence that doesn't decide what a customer gets (a promise about timing, a greeting, background) is background: extract nothing from it.
+
+=====
+
+You turn a business policy, written for people, into rules a solver can check. The whole document is below, every sentence numbered, under its heading.
+
+## Delivery refunds policy
+1. What customers get when a parcel is late, lost or damaged.
+
+## Late deliveries
+2. An express parcel more than 2 days late gets a refund if the customer asks.
+3. Express customers get a $10 voucher for any delay.
+4. A customer never gets both a refund and a voucher.
+
+## Couriers
+5. Courier parcels are never refunded.
+6. A late courier parcel is refunded if the customer asks.
+7. Lost parcels are always refunded.
+
+## Damaged and sale items
+8. Damaged items are always replaced.
+9. Sale items can't be returned or exchanged.
+
+## Refund requests
+10. Refunds for late delivery are only given when the customer asks.
+
+How to write the policy:
+- sorts: a choice between named values, e.g. {"name": "Carrier", "values": ["POST", "COURIER"]}.
+- variables: every fact a rule uses. Each has a name (letters and digits, camelCase), a sort (Bool, Int, Real or a sort's name), a role and a description of what it means, literally.
+  - role "system": the business's own systems know it (orders, tracking, payments). Never asked.
+  - role "ask": only the customer can say. Give the question the agent asks, in plain words.
+  - role "derived": decided by the rules, e.g. whether the customer gets a refund.
+  - display: how an author reads each value. For Bool and choice variables, a phrase per value ({"true": "Asked for a refund", "false": "Didn't ask for a refund"}); for numbers, text with one {} ("{} days late").
+- rules: each cites the number of the sentence it comes from. A sentence may give several rules.
+  - kind "when": when `when` holds, `then` holds. Most sentences are this.
+  - kind "define": `var` holds exactly when `as` holds. Only when the sentence really says "only if" or "means".
+  - kind "constraint": a fact about the world that always holds, e.g. days late is never negative.
+- Expressions: a variable's name; true/false, numbers, or a choice value's name; {"not": e}; {"and": [e, ...]}; {"or": [e, ...]}; {"implies": [a, b]}; {"iff": [a, b]}; {"eq": [a, b]} and likewise ne, lt, le, gt, ge; {"add": [...]}, {"sub": [a, b]}, {"mul": [...]}; {"in": [e, [value, ...]]}; reals as {"real": "2.5"}.
+- outcomes: what a customer can end up with, each a name, an assignment of derived variables to values, and a display ("A refund"). Give an outcome for every result the document describes, including getting nothing.
+- Only state what a sentence says. Don't infer a fact the document doesn't state.
+- A sentence that doesn't decide what a customer gets (a promise about timing, a greeting, background) is background: extract nothing from it.
+
+Use these names. Add a name only when a sentence needs one the list doesn't have, and keep every name below in your answer, unchanged:
+- sort Carrier: POST, COURIER
+- carrier (one of POST, COURIER; system): Who delivered the parcel.
+- daysLate (a whole number; system): Days after the promised date.
+- asked (true or false; ask, "Would you like a refund?"): The customer asked for a refund.
+- lost (true or false; system): The parcel was lost.
+- damaged (true or false; system): The item arrived damaged.
+- sale (true or false; system): The item was bought in the sale.
+- refund (true or false; derived): The customer gets a refund.
+- replace (true or false; derived): The item is replaced.
+- outcome refund: refund = true
+- outcome replace: replace = true
+- outcome nothing: refund = false, replace = false
+
+Extract rules only from sentences 5. Read the rest of the document for context, but give no rules for it.
+
+The policy's author adds: Lost parcels matter most.

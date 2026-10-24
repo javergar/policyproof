@@ -16,7 +16,7 @@ policyproof = "policyproof.eval.cli:entry"
 llm = ["pydantic-ai-slim>=2.54"]
 jev = ["pydantic-ai-slim[typesafe]>=2.54"]
 # Reserved for later milestones.
-extract = []
+extract = ["pydantic-ai-slim>=2.54"]
 bedrock-ar = []
 
 [dependency-groups]
