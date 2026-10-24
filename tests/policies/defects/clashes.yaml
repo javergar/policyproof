@@ -1,0 +1,25 @@
+# The studio prototype's courier and sale problems: two clashes share C4, one stands alone.
+policy: defect-clashes
+version: "1"
+sorts:
+  Carrier: [POST, COURIER]
+variables:
+  carrier: { sort: Carrier, role: system, description: Who delivered the parcel. }
+  daysLate: { sort: Int, role: system, description: Days after the promised date. }
+  asked: { sort: Bool, role: ask, question: "Would you like a refund?", description: The customer asked for a refund. }
+  lost: { sort: Bool, role: system, description: The parcel was lost. }
+  damaged: { sort: Bool, role: system, description: The item arrived damaged. }
+  sale: { sort: Bool, role: system, description: The item was bought in the sale. }
+  refund: { sort: Bool, role: derived, description: The customer gets a refund. }
+  replace: { sort: Bool, role: derived, description: The item is replaced. }
+rules:
+  - { id: C4, when: { eq: [carrier, COURIER] }, then: { not: refund } }
+  - { id: C5, when: { and: [{ eq: [carrier, COURIER] }, { gt: [daysLate, 0] }, asked] }, then: refund }
+  - { id: C6, when: lost, then: refund }
+  - { id: C7, when: damaged, then: replace }
+  - { id: C8, when: sale, then: { not: replace } }
+  - { id: C9, constraint: { ge: [daysLate, 0] } }
+outcomes:
+  refund: { refund: true }
+  replace: { replace: true }
+  nothing: { refund: false, replace: false }
