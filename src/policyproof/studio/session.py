@@ -689,10 +689,13 @@ class Studio:
     folder: Path
     ports: Ports
     session: Session | None = None
+    message: str | None = None  # why the document given at start couldn't be opened
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def state(self) -> w.Reply:
-        return self.session.view() if self.session is not None else w.StartReply(str(self.folder), self.ports.model)
+        if self.session is not None:
+            return self.session.view()
+        return w.StartReply(str(self.folder), self.ports.model, self.message)
 
     async def start(self, req: w.StartRequest) -> w.Reply:
         if req.path:
@@ -711,9 +714,10 @@ class Studio:
             return w.ErrorReply(f"There is no document at {doc}.")
         match await Session.open(Paths.of(doc), self.ports):
             case Success(session):
-                self.session = session
+                self.session, self.message = session, None
                 return session.view()
             case Failure(message):
+                self.message = message
                 return w.ErrorReply(message)
             case _:
                 unreachable()

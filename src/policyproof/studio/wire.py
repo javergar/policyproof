@@ -274,6 +274,7 @@ class StartReply:
 
     folder: str
     model: bool
+    message: str | None  # why the document given at start couldn't be opened
     kind: Literal["start"] = "start"
 
 

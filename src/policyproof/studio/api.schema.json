@@ -1097,6 +1097,17 @@
           "title": "Kind",
           "type": "string"
         },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
         "model": {
           "title": "Model",
           "type": "boolean"
@@ -1105,6 +1116,7 @@
       "required": [
         "folder",
         "model",
+        "message",
         "kind"
       ],
       "title": "StartReply",

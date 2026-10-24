@@ -1,4 +1,5 @@
 """`policyproof eval CASES --readers READERS`: run the cases for each reader configuration and gate the result.
+`policyproof studio ...` is handed to `policyproof.studio.cli`.
 
 Exit codes: 0 every selected configuration passes its gate; 1 one fails; 2 the cases, the policy or the reader
 configuration is invalid, or an extra is missing. Everything is checked before the first model call.
@@ -34,6 +35,9 @@ def _parser() -> argparse.ArgumentParser:
     e.add_argument("--max-conservative", type=float, default=0.1,
                    help="the largest share of conservative cases the gate allows (default 0.1)")
     e.add_argument("--json", type=Path, metavar="OUT", help="also write the report as JSON")
+    st = sub.add_parser("studio", help="open the studio on a markdown policy (policyproof studio --help)",
+                        add_help=False)
+    st.add_argument("rest", nargs=argparse.REMAINDER)
     return p
 
 
@@ -45,6 +49,12 @@ def _fail(message: str) -> int:
 def main(argv: Sequence[str] | None = None, *, models: "Mapping[str, Model] | None" = None) -> int:
     """`models` replaces the configuration's model strings (tests pass scripted models)."""
     args = _parser().parse_args(argv)
+    if args.command == "studio":
+        try:
+            from policyproof.studio.cli import main as studio
+        except ImportError as e:
+            return _fail(f"the studio needs an extra: pip install 'policyproof[studio]' ({e})")
+        return studio(args.rest)
     if args.runs < 1:
         return _fail("--runs must be at least 1")
     if args.concurrency < 1:
