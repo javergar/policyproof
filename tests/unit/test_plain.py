@@ -52,3 +52,8 @@ def test_verdicts_in_plain_words():
     assert verdict(CheckedPolicy(replace(policy, outcomes=policy.outcomes[:1])), c4) == ("No refund", "no")
     shown = replace(policy.outcomes[0], display="A refund")
     assert verdict(CheckedPolicy(replace(policy, outcomes=(shown,))), c4) == ("Not a refund", "no")
+
+
+def test_a_name_without_a_description_is_shown_as_words(toy):
+    bare = replace(var(toy, "wantsRefund"), description="")
+    assert phrase(bare, BoolLit(True)) == "Wants refund: yes"

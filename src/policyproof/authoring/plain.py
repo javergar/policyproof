@@ -34,7 +34,8 @@ def _value(lit: Lit) -> str:
 
 
 def phrase(v: Variable, value: Lit) -> str:
-    """"Came by courier": the variable's display for this value; else its description and the value."""
+    """"Came by courier": the variable's display for this value; else its description (or its name as words) and the
+    value."""
     match v.display:
         case ValuePhrases(phrases):
             shown = next((text for lit, text in phrases if lit == value), None)
@@ -46,7 +47,7 @@ def phrase(v: Variable, value: Lit) -> str:
             pass
         case _:
             assert_never(v.display)
-    return f"{(v.description or v.name).rstrip('.')}: {_value(value)}"
+    return f"{(v.description or name_words(v.name)).rstrip('.')}: {_value(value)}"
 
 
 def customer_phrases(p: CheckedPolicy, customer: Customer) -> tuple[str, ...]:
@@ -54,13 +55,16 @@ def customer_phrases(p: CheckedPolicy, customer: Customer) -> tuple[str, ...]:
     return tuple(phrase(variables[var], value) for var, value in customer if var in variables)
 
 
-def outcome_label(o: Outcome) -> str:
-    """"A refund": the outcome's display; else its name split into words."""
-    if o.display:
-        return o.display
-    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", o.name).replace("_", " ").split()
+def name_words(name: str) -> str:
+    """"Wants refund" for `wantsRefund`: for a name with nothing better to show."""
+    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).replace("_", " ").split()
     text = " ".join(words).lower()
     return text[:1].upper() + text[1:]
+
+
+def outcome_label(o: Outcome) -> str:
+    """"A refund": the outcome's display; else its name split into words."""
+    return o.display or name_words(o.name)
 
 
 type Tone = Literal["yes", "no", "none"]

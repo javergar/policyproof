@@ -88,6 +88,7 @@ type Action = Choose | Describe | Dismiss | Background | Decides | Same | Differ
 class Option:
     label: str
     action: Action
+    secondary: bool  # shown only once the author picks "Something else…"
 
 
 # ---- the problems
@@ -209,7 +210,7 @@ class Banner:
 class SessionView:
     file: str
     doc: DocView
-    items: tuple[Item, ...]  # worst first; the items of a group are next to each other
+    items: tuple[Item, ...]  # worst first
     groups: tuple[tuple[str, ...], ...]  # item keys decided together, when there is more than one
     open: int
     fixed: int

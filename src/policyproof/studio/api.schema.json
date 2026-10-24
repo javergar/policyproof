@@ -607,11 +607,16 @@
         "label": {
           "title": "Label",
           "type": "string"
+        },
+        "secondary": {
+          "title": "Secondary",
+          "type": "boolean"
         }
       },
       "required": [
         "label",
-        "action"
+        "action",
+        "secondary"
       ],
       "title": "Option",
       "type": "object"

@@ -11,9 +11,10 @@ SENTENCE = w.SentenceView("s1", "Courier parcels are never refunded.", 1, "open"
 DOC = w.DocView("couriers.md", (w.SectionView(2, "Couriers", (SENTENCE,)),), 4)
 ITEM = w.Item("clash:C4+C5", "clash", "error", "A late courier parcel", ("Courier",), "Two rules…",
               (w.Verdict("Rule 1", SENTENCE.text, "No refund", "no"),), None, "What should this customer get?",
-              (w.Option("A refund", w.Choose("refund")), w.Option("Depends", w.Describe("On what?", "It depends: ")),
-               w.Option("A person decides", w.Dismiss(None))), ("s1",), ("C4: carrier = COURIER → ¬refund",), False,
-              None)
+              (w.Option("A refund", w.Choose("refund"), False),
+               w.Option("Depends", w.Describe("On what?", "It depends: "), False),
+               w.Option("A person decides", w.Dismiss(None), True)), ("s1",), ("C4: carrier = COURIER → ¬refund",),
+              False, None)
 STATE = w.SessionView("couriers.md", DOC, (ITEM,), (), 1, 0, (w.ExampleView("e", ("Courier",), "A refund"),),
                       w.Banner(("x",), (), ("Rule 1",)), False, True, False, False, 3)
 PROPOSAL = w.ProposalView("p1", (w.Change("replace", "Couriers", "a", "b"),), (w.Check("ok", "Fixes it."),),
