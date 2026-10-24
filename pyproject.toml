@@ -18,10 +18,26 @@ jev = ["pydantic-ai-slim[typesafe]>=2.54"]
 # Reserved for later milestones.
 extract = ["pydantic-ai-slim>=2.54"]
 bedrock-ar = []
+studio = [
+    "pydantic-ai-slim>=2.54",
+    "starlette>=0.47",
+    "uvicorn>=0.35",
+]
 
 [dependency-groups]
-dev = ["pytest>=8", "hypothesis>=6", "ty", "ruff", "import-linter>=2", "jsonschema>=4", "types-pyyaml",
-       "pydantic-ai-slim[bedrock,typesafe]>=2.54"]
+dev = [
+    "pytest>=8",
+    "hypothesis>=6",
+    "ty",
+    "ruff",
+    "import-linter>=2",
+    "jsonschema>=4",
+    "types-pyyaml",
+    "pydantic-ai-slim[bedrock,typesafe]>=2.54",
+    "starlette>=0.47",
+    "uvicorn>=0.35",
+    "httpx>=0.28",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.22,<0.13.0"]
@@ -100,3 +116,30 @@ type = "forbidden"
 source_modules = ["policyproof.authoring.ports", "policyproof.authoring.propose"]
 forbidden_modules = ["policyproof.authoring.llm", "policyproof.effects.llm", "policyproof.effects.jev", "pydantic",
                      "pydantic_ai", "boto3", "botocore", "typesafe_sdk", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "The studio's files, shapes, views and items are pure: no web server, no pydantic, no model SDK"
+type = "forbidden"
+source_modules = ["policyproof.studio.workspace", "policyproof.studio.wire", "policyproof.studio.view",
+                  "policyproof.studio.items"]
+forbidden_modules = ["policyproof.studio.session", "policyproof.studio.server", "policyproof.authoring.llm",
+                     "policyproof.effects.llm", "policyproof.effects.jev", "pydantic", "pydantic_ai", "starlette",
+                     "uvicorn", "httpx", "boto3", "botocore", "typesafe_sdk"]
+
+[[tool.importlinter.contracts]]
+name = "The studio session needs no model SDK and no web server"
+type = "forbidden"
+source_modules = ["policyproof.studio.session"]
+forbidden_modules = ["policyproof.studio.server", "policyproof.authoring.llm", "policyproof.effects.llm",
+                     "policyproof.effects.jev", "pydantic_ai", "starlette", "uvicorn", "boto3", "botocore",
+                     "typesafe_sdk"]
+
+[[tool.importlinter.contracts]]
+name = "Only the studio's server and command import the web server"
+type = "forbidden"
+source_modules = ["policyproof.core", "policyproof.guards", "policyproof.effects", "policyproof.eval",
+                  "policyproof.authoring", "policyproof.studio.workspace", "policyproof.studio.wire",
+                  "policyproof.studio.view", "policyproof.studio.items", "policyproof.studio.schema",
+                  "policyproof.studio.session"]
+forbidden_modules = ["starlette", "uvicorn"]
+ignore_imports = ["policyproof.eval.cli -> policyproof.studio.cli"]  # `policyproof studio`, imported when run

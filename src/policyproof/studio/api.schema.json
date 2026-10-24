@@ -1,0 +1,1329 @@
+{
+  "$defs": {
+    "AcceptRequest": {
+      "properties": {
+        "proposal": {
+          "title": "Proposal",
+          "type": "string"
+        },
+        "switch": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Switch",
+          "type": "array"
+        }
+      },
+      "required": [
+        "proposal",
+        "switch"
+      ],
+      "title": "AcceptRequest",
+      "type": "object"
+    },
+    "Action": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Choose"
+        },
+        {
+          "$ref": "#/$defs/Describe"
+        },
+        {
+          "$ref": "#/$defs/Dismiss"
+        },
+        {
+          "$ref": "#/$defs/Background"
+        },
+        {
+          "$ref": "#/$defs/Decides"
+        },
+        {
+          "$ref": "#/$defs/Same"
+        },
+        {
+          "$ref": "#/$defs/Different"
+        },
+        {
+          "$ref": "#/$defs/RemoveName"
+        },
+        {
+          "$ref": "#/$defs/AddSentence"
+        },
+        {
+          "$ref": "#/$defs/ForgetExample"
+        }
+      ]
+    },
+    "AddSentence": {
+      "description": "Add a rule's sentence to the document.",
+      "properties": {
+        "kind": {
+          "const": "add_sentence",
+          "default": "add_sentence",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "AddSentence",
+      "type": "object"
+    },
+    "AnswerRequest": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "option": {
+          "title": "Option",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "option",
+        "text"
+      ],
+      "title": "AnswerRequest",
+      "type": "object"
+    },
+    "Background": {
+      "properties": {
+        "kind": {
+          "const": "background",
+          "default": "background",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Background",
+      "type": "object"
+    },
+    "Banner": {
+      "description": "What the last change did.",
+      "properties": {
+        "changed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Changed",
+          "type": "array"
+        },
+        "fixed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fixed",
+          "type": "array"
+        },
+        "new": {
+          "items": {
+            "type": "string"
+          },
+          "title": "New",
+          "type": "array"
+        }
+      },
+      "required": [
+        "fixed",
+        "new",
+        "changed"
+      ],
+      "title": "Banner",
+      "type": "object"
+    },
+    "Change": {
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before"
+        },
+        "kind": {
+          "enum": [
+            "replace",
+            "insert",
+            "remove"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "section": {
+          "title": "Section",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "section",
+        "before",
+        "after"
+      ],
+      "title": "Change",
+      "type": "object"
+    },
+    "Check": {
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "tone": {
+          "enum": [
+            "ok",
+            "open",
+            "warn"
+          ],
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tone",
+        "text"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "Choose": {
+      "description": "This customer should get this outcome.",
+      "properties": {
+        "kind": {
+          "const": "choose",
+          "default": "choose",
+          "title": "Kind",
+          "type": "string"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "kind"
+      ],
+      "title": "Choose",
+      "type": "object"
+    },
+    "Decides": {
+      "description": "A sentence nothing came from does decide something: extract it again.",
+      "properties": {
+        "kind": {
+          "const": "decides",
+          "default": "decides",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Decides",
+      "type": "object"
+    },
+    "Describe": {
+      "description": "The author says it in a sentence (\"It depends on\u2026\", \"Something else\u2026\"); `prefix` goes before their text.",
+      "properties": {
+        "kind": {
+          "const": "describe",
+          "default": "describe",
+          "title": "Kind",
+          "type": "string"
+        },
+        "prefix": {
+          "title": "Prefix",
+          "type": "string"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt",
+        "prefix",
+        "kind"
+      ],
+      "title": "Describe",
+      "type": "object"
+    },
+    "Different": {
+      "description": "Two names are different things: the author says how, and it goes into both descriptions.",
+      "properties": {
+        "kind": {
+          "const": "different",
+          "default": "different",
+          "title": "Kind",
+          "type": "string"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt",
+        "kind"
+      ],
+      "title": "Different",
+      "type": "object"
+    },
+    "Dismiss": {
+      "description": "Dismissed with this reason; None asks the author for one.",
+      "properties": {
+        "kind": {
+          "const": "dismiss",
+          "default": "dismiss",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "reason",
+        "kind"
+      ],
+      "title": "Dismiss",
+      "type": "object"
+    },
+    "DismissRequest": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "reason"
+      ],
+      "title": "DismissRequest",
+      "type": "object"
+    },
+    "DocView": {
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "rules": {
+          "title": "Rules",
+          "type": "integer"
+        },
+        "sections": {
+          "items": {
+            "$ref": "#/$defs/SectionView"
+          },
+          "title": "Sections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "file",
+        "sections",
+        "rules"
+      ],
+      "title": "DocView",
+      "type": "object"
+    },
+    "ErrorReply": {
+      "properties": {
+        "kind": {
+          "const": "error",
+          "default": "error",
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "kind"
+      ],
+      "title": "ErrorReply",
+      "type": "object"
+    },
+    "ExampleView": {
+      "properties": {
+        "facts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "outcome": {
+          "title": "Outcome",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "facts",
+        "outcome"
+      ],
+      "title": "ExampleView",
+      "type": "object"
+    },
+    "ForgetExample": {
+      "description": "The policy's new answer for an approved example customer is right: drop the example.",
+      "properties": {
+        "kind": {
+          "const": "forget_example",
+          "default": "forget_example",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ForgetExample",
+      "type": "object"
+    },
+    "GroupAnswer": {
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "option": {
+          "title": "Option",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "option",
+        "text"
+      ],
+      "title": "GroupAnswer",
+      "type": "object"
+    },
+    "GroupRequest": {
+      "properties": {
+        "answers": {
+          "items": {
+            "$ref": "#/$defs/GroupAnswer"
+          },
+          "title": "Answers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "answers"
+      ],
+      "title": "GroupRequest",
+      "type": "object"
+    },
+    "Item": {
+      "description": "One thing for the author to decide, in plain words.",
+      "properties": {
+        "dismissed_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dismissed Before"
+        },
+        "facts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ItemKind"
+        },
+        "lead": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lead"
+        },
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "logic": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Logic",
+          "type": "array"
+        },
+        "new": {
+          "title": "New",
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Question"
+        },
+        "sentences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sentences",
+          "type": "array"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "verdicts": {
+          "items": {
+            "$ref": "#/$defs/Verdict"
+          },
+          "title": "Verdicts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "level",
+        "title",
+        "facts",
+        "lead",
+        "verdicts",
+        "note",
+        "question",
+        "options",
+        "sentences",
+        "logic",
+        "new",
+        "dismissed_before"
+      ],
+      "title": "Item",
+      "type": "object"
+    },
+    "ItemKind": {
+      "enum": [
+        "clash",
+        "conflict",
+        "gap",
+        "gave_up",
+        "uncovered",
+        "near_duplicate",
+        "unused",
+        "disjoint",
+        "impossible",
+        "unreachable",
+        "overlap",
+        "inputs_related",
+        "definition",
+        "constraint",
+        "unlinked",
+        "example"
+      ],
+      "type": "string"
+    },
+    "Level": {
+      "enum": [
+        "error",
+        "uncovered",
+        "warning",
+        "review"
+      ],
+      "type": "string"
+    },
+    "Option": {
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/Action"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "secondary": {
+          "title": "Secondary",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "label",
+        "action",
+        "secondary"
+      ],
+      "title": "Option",
+      "type": "object"
+    },
+    "OutsideReply": {
+      "properties": {
+        "changed": {
+          "title": "Changed",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "outside",
+          "default": "outside",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "changed",
+        "kind"
+      ],
+      "title": "OutsideReply",
+      "type": "object"
+    },
+    "ProposalReply": {
+      "properties": {
+        "kind": {
+          "const": "proposal",
+          "default": "proposal",
+          "title": "Kind",
+          "type": "string"
+        },
+        "proposal": {
+          "$ref": "#/$defs/ProposalView"
+        }
+      },
+      "required": [
+        "proposal",
+        "kind"
+      ],
+      "title": "ProposalReply",
+      "type": "object"
+    },
+    "ProposalView": {
+      "properties": {
+        "additions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Additions",
+          "type": "array"
+        },
+        "attempts": {
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/Change"
+          },
+          "title": "Changes",
+          "type": "array"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "risky": {
+          "title": "Risky",
+          "type": "boolean"
+        },
+        "switches": {
+          "items": {
+            "$ref": "#/$defs/Switch"
+          },
+          "title": "Switches",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "changes",
+        "checks",
+        "additions",
+        "switches",
+        "risky",
+        "attempts"
+      ],
+      "title": "ProposalView",
+      "type": "object"
+    },
+    "ReextractReply": {
+      "properties": {
+        "kind": {
+          "const": "reextract",
+          "default": "reextract",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reextract": {
+          "$ref": "#/$defs/ReextractView"
+        }
+      },
+      "required": [
+        "reextract",
+        "kind"
+      ],
+      "title": "ReextractReply",
+      "type": "object"
+    },
+    "ReextractView": {
+      "properties": {
+        "diffs": {
+          "items": {
+            "$ref": "#/$defs/RuleDiff"
+          },
+          "title": "Diffs",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "diffs"
+      ],
+      "title": "ReextractView",
+      "type": "object"
+    },
+    "RemoveName": {
+      "properties": {
+        "kind": {
+          "const": "remove_name",
+          "default": "remove_name",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "RemoveName",
+      "type": "object"
+    },
+    "Reply": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StateReply"
+        },
+        {
+          "$ref": "#/$defs/ProposalReply"
+        },
+        {
+          "$ref": "#/$defs/ReextractReply"
+        },
+        {
+          "$ref": "#/$defs/OutsideReply"
+        },
+        {
+          "$ref": "#/$defs/StartReply"
+        },
+        {
+          "$ref": "#/$defs/ErrorReply"
+        }
+      ]
+    },
+    "ResolveRequest": {
+      "properties": {
+        "keep": {
+          "items": {
+            "enum": [
+              "mine",
+              "new"
+            ],
+            "type": "string"
+          },
+          "title": "Keep",
+          "type": "array"
+        },
+        "reextract": {
+          "title": "Reextract",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reextract",
+        "keep"
+      ],
+      "title": "ResolveRequest",
+      "type": "object"
+    },
+    "RewordRequest": {
+      "properties": {
+        "proposal": {
+          "title": "Proposal",
+          "type": "string"
+        },
+        "texts": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Texts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "proposal",
+        "texts"
+      ],
+      "title": "RewordRequest",
+      "type": "object"
+    },
+    "RuleDiff": {
+      "description": "One sentence whose rules a new extraction reads differently.",
+      "properties": {
+        "hand_fixed": {
+          "title": "Hand Fixed",
+          "type": "boolean"
+        },
+        "keep": {
+          "enum": [
+            "mine",
+            "new"
+          ],
+          "title": "Keep",
+          "type": "string"
+        },
+        "mine": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mine",
+          "type": "array"
+        },
+        "mine_said": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mine Said",
+          "type": "array"
+        },
+        "new": {
+          "items": {
+            "type": "string"
+          },
+          "title": "New",
+          "type": "array"
+        },
+        "new_said": {
+          "items": {
+            "type": "string"
+          },
+          "title": "New Said",
+          "type": "array"
+        },
+        "section": {
+          "title": "Section",
+          "type": "string"
+        },
+        "sentence": {
+          "title": "Sentence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sentence",
+        "section",
+        "mine",
+        "new",
+        "mine_said",
+        "new_said",
+        "hand_fixed",
+        "keep"
+      ],
+      "title": "RuleDiff",
+      "type": "object"
+    },
+    "Same": {
+      "description": "Two names are one thing: merge them.",
+      "properties": {
+        "kind": {
+          "const": "same",
+          "default": "same",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Same",
+      "type": "object"
+    },
+    "SectionView": {
+      "properties": {
+        "heading": {
+          "title": "Heading",
+          "type": "string"
+        },
+        "level": {
+          "title": "Level",
+          "type": "integer"
+        },
+        "sentences": {
+          "items": {
+            "$ref": "#/$defs/SentenceView"
+          },
+          "title": "Sentences",
+          "type": "array"
+        }
+      },
+      "required": [
+        "level",
+        "heading",
+        "sentences"
+      ],
+      "title": "SectionView",
+      "type": "object"
+    },
+    "SentenceState": {
+      "enum": [
+        "plain",
+        "open",
+        "changed",
+        "inserted",
+        "removed",
+        "uncovered",
+        "background"
+      ],
+      "type": "string"
+    },
+    "SentenceView": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Number"
+        },
+        "state": {
+          "$ref": "#/$defs/SentenceState"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "was": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Was"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "number",
+        "state",
+        "was"
+      ],
+      "title": "SentenceView",
+      "type": "object"
+    },
+    "SessionView": {
+      "properties": {
+        "banner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Banner"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "can_undo": {
+          "title": "Can Undo",
+          "type": "boolean"
+        },
+        "doc": {
+          "$ref": "#/$defs/DocView"
+        },
+        "done": {
+          "title": "Done",
+          "type": "boolean"
+        },
+        "examples": {
+          "items": {
+            "$ref": "#/$defs/ExampleView"
+          },
+          "title": "Examples",
+          "type": "array"
+        },
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "fixed": {
+          "title": "Fixed",
+          "type": "integer"
+        },
+        "groups": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Item"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "model": {
+          "title": "Model",
+          "type": "boolean"
+        },
+        "open": {
+          "title": "Open",
+          "type": "integer"
+        },
+        "outside": {
+          "title": "Outside",
+          "type": "boolean"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "file",
+        "doc",
+        "items",
+        "groups",
+        "open",
+        "fixed",
+        "examples",
+        "banner",
+        "can_undo",
+        "model",
+        "outside",
+        "done",
+        "version"
+      ],
+      "title": "SessionView",
+      "type": "object"
+    },
+    "StartReply": {
+      "description": "No document yet: the page asks for one.",
+      "properties": {
+        "folder": {
+          "title": "Folder",
+          "type": "string"
+        },
+        "kind": {
+          "const": "start",
+          "default": "start",
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "model": {
+          "title": "Model",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "folder",
+        "model",
+        "message",
+        "kind"
+      ],
+      "title": "StartReply",
+      "type": "object"
+    },
+    "StartRequest": {
+      "description": "Open a document by path, or save pasted text as NAME.md in the studio's folder.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Text"
+        }
+      },
+      "required": [
+        "path",
+        "name",
+        "text"
+      ],
+      "title": "StartRequest",
+      "type": "object"
+    },
+    "StateReply": {
+      "properties": {
+        "kind": {
+          "const": "state",
+          "default": "state",
+          "title": "Kind",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/SessionView"
+        }
+      },
+      "required": [
+        "state",
+        "kind"
+      ],
+      "title": "StateReply",
+      "type": "object"
+    },
+    "Switch": {
+      "description": "A new input the author can move between asking the customer and the business's systems.",
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "ask",
+            "system"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "var": {
+          "title": "Var",
+          "type": "string"
+        }
+      },
+      "required": [
+        "var",
+        "label",
+        "role"
+      ],
+      "title": "Switch",
+      "type": "object"
+    },
+    "Tone": {
+      "enum": [
+        "yes",
+        "no",
+        "none"
+      ],
+      "type": "string"
+    },
+    "Verdict": {
+      "description": "What one rule says for the customer, next to its sentence.",
+      "properties": {
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "says": {
+          "title": "Says",
+          "type": "string"
+        },
+        "sentence": {
+          "title": "Sentence",
+          "type": "string"
+        },
+        "tone": {
+          "$ref": "#/$defs/Tone"
+        }
+      },
+      "required": [
+        "rule",
+        "sentence",
+        "says",
+        "tone"
+      ],
+      "title": "Verdict",
+      "type": "object"
+    }
+  },
+  "description": "Not sent: the root the schema hangs every reply and request from.",
+  "properties": {
+    "accept": {
+      "$ref": "#/$defs/AcceptRequest"
+    },
+    "answer": {
+      "$ref": "#/$defs/AnswerRequest"
+    },
+    "dismiss": {
+      "$ref": "#/$defs/DismissRequest"
+    },
+    "group": {
+      "$ref": "#/$defs/GroupRequest"
+    },
+    "reply": {
+      "$ref": "#/$defs/Reply"
+    },
+    "resolve": {
+      "$ref": "#/$defs/ResolveRequest"
+    },
+    "reword": {
+      "$ref": "#/$defs/RewordRequest"
+    },
+    "start": {
+      "$ref": "#/$defs/StartRequest"
+    }
+  },
+  "required": [
+    "reply",
+    "answer",
+    "group",
+    "reword",
+    "accept",
+    "dismiss",
+    "resolve",
+    "start"
+  ],
+  "title": "Api",
+  "type": "object"
+}

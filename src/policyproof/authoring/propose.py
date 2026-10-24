@@ -12,7 +12,7 @@ from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
-from policyproof.authoring.document import Document, Edit, apply, gone, touched
+from policyproof.authoring.document import Anchor, Document, Edit, apply, gone, touched
 from policyproof.authoring.examples import Example, broken, holds
 from policyproof.authoring.extraction import Extraction
 from policyproof.authoring.merge import Additions, Changed, additions, merge
@@ -55,7 +55,7 @@ class Proposal:
     new: tuple[Found, ...]  # problems after that were not problems before
     broken: tuple[Example, ...]
     additions: Additions
-    answered: bool | None  # Choose: every target's customer now gets that outcome; otherwise None
+    answered: bool | None  # every expected target's customer (each completion) now gets its outcome; else None
     attempts: int
 
 
@@ -118,10 +118,10 @@ def _rules_of(f: Found) -> tuple[str, ...]:
             assert_never(f)
 
 
-def _situation(state: Draft, before: Problems, target: Sequence[int]) -> Situation:
+def _situation(state: Draft, before: Problems, target: Sequence[int], extra: Sequence[str] = ()) -> Situation:
     p = state.extraction.policy
     customer = tuple(dict.fromkeys(x for i in target for x in customer_phrases(p, _customer_of(before.found[i]))))
-    rules = {r for i in target for r in _rules_of(before.found[i])}
+    rules = {r for i in target for r in _rules_of(before.found[i])} | set(extra)
     sentences = tuple(dict.fromkeys(link.anchor for link in state.extraction.links if link.rule in rules))
     return Situation(customer, sentences, tuple((o.name, outcome_label(o)) for o in p.outcomes))
 
@@ -138,7 +138,8 @@ class _Tried:
 
 
 async def _evaluate(state: Draft, before: Problems, target: Sequence[int], edits: tuple[Edit, ...],
-                    outcome: str | None, extractor: Extractor, attempts: int) -> Result[Proposal | _Tried, LLMError]:
+                    expected: Mapping[int, str], extractor: Extractor, attempts: int, *,
+                    again: tuple[Anchor, ...] = (), guidance: str = "") -> Result[Proposal | _Tried, LLMError]:
     match apply(state.doc, edits):
         case Success(doc):
             pass
@@ -146,9 +147,10 @@ async def _evaluate(state: Draft, before: Problems, target: Sequence[int], edits
             return Success(_Tried(EditFailed(message)))
         case _:
             unreachable()
-    written, replaced = touched(state.doc, doc), gone(state.doc, doc)
+    written = tuple(dict.fromkeys((*touched(state.doc, doc), *again)))
+    replaced = gone(state.doc, doc)
     if written:
-        match await extractor.extract(doc, vocabulary=state.extraction.policy, only=written):
+        match await extractor.extract(doc, vocabulary=state.extraction.policy, only=written, guidance=guidance):
             case Success(extracted):
                 part = extracted
             case Failure(error):
@@ -169,7 +171,8 @@ async def _evaluate(state: Draft, before: Problems, target: Sequence[int], edits
     fixes = tuple(i for i, f in enumerate(before.found) if not _still_a_problem(c2, f))
     still_open = tuple(i for i in target if i not in fixes)
     new = tuple(f for f in after.found if not isinstance(f, GaveUp) and not _still_a_problem(c1, f))
-    answered = None if outcome is None else all(decides(c2, _witness_of(before.found[i]), outcome) for i in target)
+    answered = (all(decides(c2, _customer_of(before.found[i]), o) for i, o in expected.items())
+                if expected else None)
     return Success(Proposal(edits, Draft(doc, merged, state.examples), fixes, still_open, new,
                             broken(c2, state.examples), additions(state.extraction.policy, merged.policy),
                             answered, attempts))
@@ -183,7 +186,7 @@ def _cost(p: Proposal) -> int:
     return len(p.still_open) + len(p.new) + len(p.broken) + (p.answered is False)
 
 
-def _what_went_wrong(state: Draft, before: Problems, p: Proposal, outcome: str | None) -> str:
+def _what_went_wrong(state: Draft, before: Problems, p: Proposal, expected: Mapping[int, str]) -> str:
     policy = state.extraction.policy
     labels = {o.name: outcome_label(o) for o in policy.outcomes}
     lines = [f"Still a problem for: {', '.join(customer_phrases(policy, _customer_of(before.found[i])))}."
@@ -192,18 +195,26 @@ def _what_went_wrong(state: Draft, before: Problems, p: Proposal, outcome: str |
               for f in p.new]
     lines += [f"Breaks approved example {ex.id}: it should get {labels.get(ex.outcome, ex.outcome)}."
               for ex in p.broken]
-    if p.answered is False and outcome is not None:
-        lines.append(f"The customer doesn't get {labels.get(outcome, outcome)}.")
+    if p.answered is False:
+        c2 = compile(p.after.extraction.policy)
+        lines += [f"The customer ({', '.join(customer_phrases(policy, _customer_of(before.found[i])))}) doesn't get "
+                  f"{labels.get(o, o)}." for i, o in expected.items()
+                  if not decides(c2, _customer_of(before.found[i]), o)]
     return "Your last change didn't work. " + " ".join(lines)
 
 
 async def propose(state: Draft, before: Problems, target: tuple[int, ...], answer: Answer, *,
-                  drafter: Drafter, extractor: Extractor, retries: int = 2) -> Result[Proposal, ProposeError]:
-    situation = _situation(state, before, target)
-    outcome = answer.outcome if isinstance(answer, Choose) else None
+                  drafter: Drafter, extractor: Extractor, retries: int = 2, expect: Mapping[int, str] | None = None,
+                  rules: tuple[str, ...] = ()) -> Result[Proposal, ProposeError]:
+    """`expect` gives each target its own outcome (a group answered customer by customer); a `Choose` expects its
+    outcome for every target. `rules` adds those rules' sentences to what the drafter is told, for findings that
+    aren't in `before`."""
+    situation = _situation(state, before, target, rules)
     match answer:
-        case Choose() | Describe():
-            pass
+        case Choose(outcome):
+            expected: Mapping[int, str] = dict.fromkeys(target, outcome) if expect is None else expect
+        case Describe():
+            expected = expect or {}
         case _:
             assert_never(answer)
     failure: str | None = None
@@ -217,14 +228,14 @@ async def propose(state: Draft, before: Problems, target: tuple[int, ...], answe
                 return Failure(error)
             case _:
                 unreachable()
-        match await _evaluate(state, before, target, edits, outcome, extractor, attempt):
+        match await _evaluate(state, before, target, edits, expected, extractor, attempt):
             case Success(_Tried(error)):
                 last, failure = error, f"Your last change couldn't be used: {error.message}"
             case Success(Proposal() as p):
                 if _clean(p):
                     return Success(p)
                 best = p if best is None or _cost(p) < _cost(best) else best
-                failure = _what_went_wrong(state, before, p, outcome)
+                failure = _what_went_wrong(state, before, p, expected)
             case Failure(error):
                 return Failure(error)
             case _:
@@ -238,7 +249,18 @@ async def propose(state: Draft, before: Problems, target: tuple[int, ...], answe
 async def reword(state: Draft, before: Problems, target: tuple[int, ...], edits: tuple[Edit, ...], *,
                  extractor: Extractor) -> Result[Proposal, ProposeError]:
     """The author's own wording, checked the same way, without the drafter."""
-    match await _evaluate(state, before, target, edits, None, extractor, 1):
+    return _checked(await _evaluate(state, before, target, edits, {}, extractor, 1))
+
+
+async def extract_again(state: Draft, before: Problems, anchors: tuple[Anchor, ...], *, guidance: str,
+                        extractor: Extractor) -> Result[Proposal, ProposeError]:
+    """The document unchanged and these sentences extracted again with the author's guidance (a sentence nothing came
+    from, which the author says decides something), checked like any proposal."""
+    return _checked(await _evaluate(state, before, (), (), {}, extractor, 1, again=anchors, guidance=guidance))
+
+
+def _checked(r: Result[Proposal | _Tried, LLMError]) -> Result[Proposal, ProposeError]:
+    match r:
         case Success(_Tried(error)):
             return Failure(error)
         case Success(Proposal() as p):

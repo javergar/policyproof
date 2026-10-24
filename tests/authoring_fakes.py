@@ -29,10 +29,12 @@ class Drafter:
     results: list[Result[tuple[Edit, ...], LLMError]]
     failures: list[str | None] = field(default_factory=list)
     answers: list[Answer] = field(default_factory=list)
+    situations: list[Situation] = field(default_factory=list)
 
     async def draft(self, doc: Document, situation: Situation, answer: Answer,
                     failure: str | None) -> Result[tuple[Edit, ...], LLMError]:
         self.failures.append(failure)
+        self.situations.append(situation)
         self.answers.append(answer)
         return _next(self.results, len(self.failures))
 

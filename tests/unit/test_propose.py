@@ -9,8 +9,8 @@ from returns.result import Failure, Success
 from policyproof.authoring.document import Anchor, Remove, Replace, parse
 from policyproof.authoring.examples import Example, holds
 from policyproof.authoring.extraction import Extraction, Link
-from policyproof.authoring.ports import Choose
-from policyproof.authoring.propose import Draft, EditFailed, Proposal, approve, propose, reword
+from policyproof.authoring.ports import Choose, Describe
+from policyproof.authoring.propose import Draft, EditFailed, Proposal, approve, extract_again, propose, reword
 from policyproof.core.problems import Clash, Gap, problems, still_a_problem
 from policyproof.core.solver import compile
 from policyproof.core.syntax import And, BoolLit, CheckedPolicy, Cmp, EnumLit, IntLit, Not, Var, When
@@ -186,3 +186,32 @@ def test_approve_completes_a_customer_the_fix_asks_more_of():
 def test_approve_refuses_an_answer_the_policy_cant_give():
     draft, before, p = insured_proposal()
     assert isinstance(approve(draft, p, before, {0: "jackpot"}), Failure)
+
+
+def test_a_group_answered_per_customer_is_checked_per_customer():
+    def ask(expect):
+        drafter, extractor = Drafter([Success(GOOD_EDIT)]), Extractor([Success(GOOD_PART)])
+        return run(propose(state(), BEFORE, (LATE,), Describe("each their own"), drafter=drafter,
+                           extractor=extractor, retries=0, expect=expect)).unwrap()
+    assert ask({LATE: "refund"}).answered is True
+    assert ask({LATE: "nothing"}).answered is False
+    assert ask(None).answered is None
+
+
+def test_extra_rules_reach_the_situation():
+    drafter, extractor = Drafter([Success(GOOD_EDIT)]), Extractor([Success(GOOD_PART)])
+    run(propose(state(), BEFORE, (), Describe("post parcels"), drafter=drafter, extractor=extractor, rules=("C10",)))
+    assert drafter.situations[0].sentences == (S10,)
+
+
+def test_extract_again_merges_a_sentence_that_decides():
+    base = Extraction(CheckedPolicy(replace(POLICY, rules=tuple(r for r in POLICY.rules if r.id != "C10"))),
+                      tuple(link for link in BASE.links if link.rule != "C10"), (S10,))
+    post = When("x", And((Cmp("eq", Var("carrier"), EnumLit("Carrier", "POST")), Not(Var("lost")))), Not(Var("refund")))
+    found = Extraction(CheckedPolicy(replace(POLICY, rules=(post,))), (Link("x", S10),), ())
+    extractor = Extractor([Success(found)])
+    before = problems(compile(base.policy))
+    p = run(extract_again(Draft(DOC, base, ()), before, (S10,), guidance="it decides", extractor=extractor)).unwrap()
+    assert p.after.doc == DOC and p.after.extraction.uncovered == ()
+    assert any(link.anchor == S10 for link in p.after.extraction.links)
+    assert extractor.calls == [(base.policy, (S10,), "it decides")]
