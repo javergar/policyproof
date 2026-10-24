@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Policyproof Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: the policy as a paper sheet on the left; a working desk on the right that always shows the one problem to decide next. */
+:root {
+  --paper: #eef1f5;      /* desk */
+  --sheet: #ffffff;      /* the document and cards */
+  --ink: #18202c;
+  --muted: #5a6474;
+  --line: #d6dce5;
+  --accent: #2c4f86;     /* ink blue: actions and focus */
+  --accent-soft: #e3eaf6;
+  --conflict: #b42318;
+  --conflict-soft: #fbe9e7;
+  --caution: #a15c07;
+  --caution-soft: #fdf1dc;
+  --agree: #17713f;
+  --agree-soft: #e2f3e8;
+  --font-doc: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-logic: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #11151b; --sheet: #191f28; --ink: #e5e9ef; --muted: #9aa4b3; --line: #2b3441;
+    --accent: #93b2e6; --accent-soft: #1f2b3f; --conflict: #f2857a; --conflict-soft: #3a1f1f;
+    --caution: #f0b65e; --caution-soft: #362b17; --agree: #66cf8f; --agree-soft: #17301f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #11151b; --sheet: #191f28; --ink: #e5e9ef; --muted: #9aa4b3; --line: #2b3441;
+  --accent: #93b2e6; --accent-soft: #1f2b3f; --conflict: #f2857a; --conflict-soft: #3a1f1f;
+  --caution: #f0b65e; --caution-soft: #362b17; --agree: #66cf8f; --agree-soft: #17301f; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 14px/1.5 var(--font-ui); }
+button { font: inherit; color: inherit; }
+button:focus-visible, textarea:focus-visible, input:focus-visible, .sentence:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.wrap { padding-block: 18px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+/* top bar */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand b { font-family: var(--font-doc); font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.brand span { color: var(--muted); font-family: var(--font-logic); font-size: 12px; }
+.status { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; align-items: center; }
+.pill { font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--sheet); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill.bad { color: var(--conflict); border-color: currentColor; background: var(--conflict-soft); }
+.pill.good { color: var(--agree); border-color: currentColor; background: var(--agree-soft); }
+.tool { border: 1px solid var(--line); background: var(--sheet); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+.tool:hover:not(:disabled) { border-color: var(--accent); }
+.tool:disabled { opacity: .45; cursor: default; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* the document */
+.sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; padding: 26px 30px 30px; min-width: 0; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+@media (max-width: 900px) { .sheet { position: static; max-height: none; padding: 20px 18px; } }
+.sheet .file { font-family: var(--font-logic); font-size: 11.5px; color: var(--muted); margin-bottom: 14px; }
+.sheet h1 { font-family: var(--font-doc); font-weight: 600; font-size: 28px; line-height: 1.15; margin: 0 0 6px; text-wrap: balance; }
+.sheet .lede { font-family: var(--font-doc); font-size: 16.5px; color: var(--muted); margin: 0 0 18px; max-width: 60ch; }
+.sheet h2 { font-family: var(--font-ui); font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 20px 0 6px; font-weight: 600; }
+.clauses { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sentence { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 6px; padding: 5px 8px 5px 4px; border-radius: 4px; cursor: pointer; border-left: 3px solid transparent; font-family: var(--font-doc); font-size: 16.5px; line-height: 1.45; }
+.sentence .num { font-family: var(--font-logic); font-size: 11px; color: var(--muted); padding-top: 5px; text-align: right; }
+.sentence:hover { background: var(--paper); }
+.sentence[data-state="open"] { border-left-color: var(--conflict); }
+.sentence[data-state="open"] .txt { text-decoration: underline wavy var(--conflict); text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.sentence[data-focus="true"] { background: var(--conflict-soft); }
+.sentence[data-state="changed"] { border-left-color: var(--agree); }
+.sentence.flash { animation: flash 1.4s ease-out; }
+@keyframes flash { from { background: var(--agree-soft); } to { background: transparent; } }
+del { color: var(--conflict); text-decoration-thickness: 1px; }
+ins { color: var(--agree); text-decoration: none; background: var(--agree-soft); border-radius: 2px; padding: 0 1px; }
+
+/* the desk */
+.desk { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.banner { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 13px; animation: rise .35s ease-out; }
+.banner .what { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.banner .fixed { color: var(--agree); }
+.banner .new { color: var(--caution); font-weight: 500; }
+@keyframes rise { from { transform: translateY(4px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+.case { background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; animation: rise .3s ease-out; }
+.case-head { padding: 14px 18px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--conflict); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.eyebrow.new { color: var(--caution); }
+.eyebrow .tag { letter-spacing: 0; text-transform: none; font-weight: 500; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--caution-soft); color: var(--caution); }
+.case-head h3 { margin: 0; font-family: var(--font-doc); font-weight: 500; font-size: 21px; line-height: 1.25; text-wrap: balance; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.fact { font-size: 12.5px; padding: 2px 10px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); }
+.case-body { padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 14px; }
+.lead { font-size: 13.5px; color: var(--muted); margin: 0; }
+.verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.verdict { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.verdict .who { font-size: 12px; color: var(--muted); font-weight: 500; }
+.verdict .says { font-weight: 600; font-size: 15px; }
+.verdict .says.yes { color: var(--agree); } .verdict .says.no { color: var(--conflict); }
+.verdict q { font-family: var(--font-doc); font-size: 15px; line-height: 1.4; quotes: "\201C" "\201D"; }
+.verdict.shared { border-color: var(--accent); background: var(--accent-soft); }
+.note { font-size: 13px; padding: 8px 12px; border-radius: 6px; background: var(--accent-soft); margin: 0; }
+
+.ask { display: flex; flex-direction: column; gap: 8px; }
+.ask .q { font-weight: 600; font-size: 14.5px; }
+.choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice { border: 1px solid var(--line); background: var(--sheet); border-radius: 8px; padding: 7px 14px; cursor: pointer; text-align: left; }
+.choice:hover { border-color: var(--accent); }
+.choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.choice.quiet { color: var(--muted); border-style: dashed; }
+.depends { display: flex; flex-direction: column; gap: 6px; }
+.depends label { font-size: 13px; color: var(--muted); }
+input[type="text"], textarea { width: 100%; font: 15px/1.45 var(--font-doc); color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+textarea { resize: vertical; min-height: 64px; }
+
+.proposal { border-top: 1px dashed var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.proposal .h { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
+.change { display: flex; flex-direction: column; gap: 4px; }
+.change .rid { font-size: 12px; color: var(--muted); font-weight: 500; }
+.change .after { font-family: var(--font-doc); font-size: 16px; line-height: 1.45; }
+.checks { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.check { display: flex; gap: 8px; align-items: baseline; }
+.check::before { content: "✓"; color: var(--agree); font-weight: 700; }
+.check.warn::before { content: "!"; color: var(--caution); }
+.check.warn { color: var(--caution); }
+.check.open::before { content: "•"; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.primary { background: var(--accent); color: var(--sheet); border: 1px solid var(--accent); border-radius: 6px; padding: 7px 16px; cursor: pointer; font-weight: 600; }
+.primary.risky { background: var(--caution); border-color: var(--caution); }
+.secondary { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 7px 14px; cursor: pointer; }
+.secondary:hover { border-color: var(--accent); }
+
+details.logic { font-size: 12.5px; }
+details.logic summary { cursor: pointer; color: var(--muted); }
+details.logic pre { font-family: var(--font-logic); font-size: 12px; line-height: 1.6; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 8px 0 0; overflow-x: auto; white-space: pre; }
+
+.queue { display: flex; flex-direction: column; gap: 6px; }
+.queue .h { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
+.row { display: flex; gap: 10px; align-items: center; background: var(--sheet); border: 1px solid var(--line); border-left: 3px solid var(--conflict); border-radius: 6px; padding: 8px 12px; cursor: pointer; text-align: left; width: 100%; }
+.row:hover { border-color: var(--accent); border-left-color: var(--conflict); }
+.row.new { border-left-color: var(--caution); }
+.row .t { flex: 1; min-width: 0; }
+.row .r { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.row.done { border-left-color: var(--agree); cursor: default; opacity: .75; }
+.saved { font-size: 13px; }
+.saved summary { cursor: pointer; font-weight: 500; }
+.saved ul { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.saved li { display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+.saved li b { font-weight: 600; }
+
+.done-card { background: var(--sheet); border: 1px solid var(--agree); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 10px; animation: rise .3s ease-out; }
+.done-card h3 { margin: 0; font-family: var(--font-doc); font-size: 22px; font-weight: 500; color: var(--agree); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--sheet); padding: 8px 14px; border-radius: 6px; font-size: 13px; max-width: calc(100% - 32px); }
+.proto { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="brand"><b>Policyproof Studio</b><span>delivery-refunds.md</span></div>
+    <div class="status" id="status"></div>
+    <button class="tool" id="undo" type="button">Undo</button>
+    <button class="tool" id="reextract" type="button">Extract again</button>
+  </header>
+  <div class="grid">
+    <article class="sheet" id="doc" aria-label="Policy document"></article>
+    <section class="desk" id="desk" aria-live="polite"></section>
+  </div>
+  <p class="proto">Prototype: the problems and proposed changes are scripted to show the flow. In the tool, Z3 finds each problem and checks each proposal.</p>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+// ---------- the policy ----------
+const SECTIONS = [
+  ["Late deliveries", ["R1", "R2", "R3"]],
+  ["Couriers", ["R4", "R5", "R6"]],
+  ["Damaged and sale items", ["R7", "R8"]],
+  ["Refund requests", ["R9"]],
+];
+
+function r4Exceptions(f) {
+  const ex = [];
+  if (f.r4Lost) ex.push("they are lost");
+  if (f.r4Late) ex.push("they arrive late and the customer asks");
+  if (f.r4Late2) ex.push("they arrive more than 2 days late and the customer asks");
+  if (f.r4LateNoAsk) ex.push("they arrive late");
+  return ex;
+}
+
+function computedText(id, f) {
+  switch (id) {
+    case "R1": return f.p1 === "v" ? "An express parcel more than 2 days late gets the $10 voucher from rule 2 instead of a refund."
+                                   : "An express parcel more than 2 days late gets a refund if the customer asks.";
+    case "R2": return f.p1 === "r" ? "Express customers get a $10 voucher for a delay of 2 days or less."
+                                   : "Express customers get a $10 voucher for any delay.";
+    case "R3": return f.p1 === "b" ? "A customer never gets both a refund and a voucher, except for an express parcel more than 2 days late."
+                                   : "A customer never gets both a refund and a voucher.";
+    case "R4": { const ex = r4Exceptions(f); return "Courier parcels are never refunded" + (ex.length ? ", unless " + ex.join(", or ") : "") + "."; }
+    case "R5": return f.r5Removed ? null : f.r4Late2 ? "A courier parcel more than 2 days late is refunded if the customer asks."
+                                                     : "A late courier parcel is refunded if the customer asks.";
+    case "R6": return f.r6CourierExcl ? "Lost parcels are always refunded, except courier parcels." : "Lost parcels are always refunded.";
+    case "R7": return f.p4 === "nothing" ? "Damaged items are always replaced, except sale items." : "Damaged items are always replaced.";
+    case "R8": return f.p4 === "replace" ? "Sale items can't be returned or exchanged, unless they arrive damaged." : "Sale items can't be returned or exchanged.";
+    case "R9": return f.p5 === "refund" ? "Refunds for late delivery are only given when the customer asks, except for courier parcels."
+                                        : "Refunds for late delivery are only given when the customer asks.";
+  }
+}
+const text = (id, f) => (f.custom && f.custom[id] !== undefined && computedText(id, f) !== null) ? f.custom[id] : computedText(id, f);
+
+function logic(id, f) {
+  switch (id) {
+    case "R1": return f.p1 === "v" ? "express ∧ daysLate > 2 → voucher ∧ ¬refund" : "express ∧ daysLate > 2 ∧ asked → refund";
+    case "R2": return f.p1 === "r" ? "express ∧ 0 < daysLate ≤ 2 → voucher" : "express ∧ daysLate > 0 → voucher";
+    case "R3": return f.p1 === "b" ? "¬(express ∧ daysLate > 2) → ¬(refund ∧ voucher)" : "¬(refund ∧ voucher)";
+    case "R4": {
+      const c = [];
+      if (f.r4Lost) c.push("¬lost");
+      if (f.r4Late) c.push("¬(daysLate > 0 ∧ asked)");
+      if (f.r4Late2) c.push("¬(daysLate > 2 ∧ asked)");
+      if (f.r4LateNoAsk) c.push("¬(daysLate > 0)");
+      return ["carrier = COURIER"].concat(c).join(" ∧ ") + " → ¬refund";
+    }
+    case "R5": return f.r4Late2 ? "carrier = COURIER ∧ daysLate > 2 ∧ asked → refund" : "carrier = COURIER ∧ daysLate > 0 ∧ asked → refund";
+    case "R6": return f.r6CourierExcl ? "lost ∧ carrier ≠ COURIER → refund" : "lost → refund";
+    case "R7": return f.p4 === "nothing" ? "damaged ∧ ¬sale → replace" : "damaged → replace";
+    case "R8": return f.p4 === "replace" ? "sale ∧ ¬damaged → ¬replace ∧ ¬return" : "sale → ¬replace ∧ ¬return";
+    case "R9": return f.p5 === "refund" ? "daysLate > 0 ∧ refund ∧ carrier ≠ COURIER → asked" : "daysLate > 0 ∧ refund → asked";
+  }
+}
+
+// ---------- the problems Z3 would find ----------
+const PROBLEMS = {
+  P1: {
+    title: "An express parcel arrives 5 days late and the customer asks for a refund",
+    short: "Express parcel 5 days late", rules: ["R1", "R2", "R3"],
+    facts: ["Express delivery", "5 days late", "Asked for a refund"],
+    says: { R1: ["A refund", "yes"], R2: ["A $10 voucher", "yes"], R3: ["Not both", "no"] },
+    note: "Any two of these rules work together. All three at once can't, so no single rule is wrong. Your answer decides which one changes.",
+    model: "express = true, daysLate = 5, asked = true",
+    active: f => !f.p1,
+    question: "What should this customer get?",
+    options: [
+      { label: "A refund only", answer: "A refund only", apply: f => { f.p1 = "r"; } },
+      { label: "The voucher only", answer: "The voucher only", apply: f => { f.p1 = "v"; } },
+      { label: "Both", answer: "A refund and the voucher", apply: f => { f.p1 = "b"; } },
+    ],
+  },
+  P2: {
+    title: "A courier parcel arrives 3 days late and the customer asks for a refund",
+    short: "Late courier parcel, customer asked", rules: ["R4", "R5"],
+    facts: ["Courier", "3 days late", "Asked for a refund"],
+    says: { R4: ["No refund", "no"], R5: ["A refund", "yes"] },
+    model: "carrier = COURIER, daysLate = 3, asked = true",
+    active: f => !f.r4Late && !f.r4Late2 && !f.r4LateNoAsk && !f.r5Removed,
+    question: "What should this customer get?",
+    options: [
+      { label: "A refund", answer: "A refund", apply: f => { f.r4Late = true; },
+        reword: (f, id, t) => { if (id === "R4" && !/ask/i.test(t)) { f.r4Late = false; f.r4LateNoAsk = true; } } },
+      { label: "No refund", answer: "No refund", apply: f => { f.r5Removed = true; } },
+      { label: "It depends on something else…", answer: "A refund if more than 2 days late", depends: "Only if the parcel is more than 2 days late",
+        apply: f => { f.r4Late2 = true; } },
+    ],
+  },
+  P3: {
+    title: "A courier parcel is lost",
+    short: "Lost courier parcel", rules: ["R4", "R6"],
+    facts: ["Courier", "Parcel lost"],
+    says: { R4: ["No refund", "no"], R6: ["A refund", "yes"] },
+    model: "carrier = COURIER, lost = true",
+    active: f => !f.r4Lost && !f.r6CourierExcl,
+    question: "What should this customer get?",
+    options: [
+      { label: "A refund", answer: "A refund", apply: f => { f.r4Lost = true; } },
+      { label: "No refund", answer: "No refund", apply: f => { f.r6CourierExcl = true; } },
+    ],
+  },
+  P4: {
+    title: "An item bought in the sale arrives damaged",
+    short: "Damaged sale item", rules: ["R7", "R8"],
+    facts: ["Item damaged", "Bought in the sale"],
+    says: { R7: ["A replacement", "yes"], R8: ["Nothing", "no"] },
+    model: "damaged = true, sale = true",
+    active: f => !f.p4,
+    question: "What should this customer get?",
+    options: [
+      { label: "A replacement", answer: "A replacement", apply: f => { f.p4 = "replace"; } },
+      { label: "Nothing", answer: "Nothing", apply: f => { f.p4 = "nothing"; } },
+    ],
+  },
+  P5: {
+    title: "A courier parcel arrives 3 days late and the customer doesn't ask for a refund",
+    short: "Late courier parcel, customer didn't ask", rules: ["R4", "R9"],
+    facts: ["Courier", "3 days late", "Didn't ask for a refund"],
+    says: { R4: ["A refund", "yes"], R9: ["No refund", "no"] },
+    model: "carrier = COURIER, daysLate = 3, asked = false",
+    active: f => f.r4LateNoAsk && !f.p5,
+    question: "What should this customer get?",
+    options: [
+      { label: "A refund anyway", answer: "A refund", apply: f => { f.p5 = "refund"; } },
+      { label: "No refund unless they ask", answer: "No refund", apply: f => { f.r4LateNoAsk = false; f.r4Late = true; } },
+    ],
+  },
+};
+
+// Decisions that settle several problems at once, keyed by the problems they cover.
+const GROUP_OPTIONS = {
+  "P2+P3": {
+    question: "Should rule 4 have exceptions?",
+    options: [
+      { label: "Yes, refund in both cases", answers: { P2: "A refund", P3: "A refund" }, apply: f => { f.r4Late = true; f.r4Lost = true; },
+        reword: (f, id, t) => { if (id === "R4" && !/ask/i.test(t)) { f.r4Late = false; f.r4LateNoAsk = true; } } },
+      { label: "Only for lost parcels", answers: { P3: "A refund" }, apply: f => { f.r4Lost = true; } },
+      { label: "No, neither gets a refund", answers: { P2: "No refund", P3: "No refund" }, apply: f => { f.r5Removed = true; f.r6CourierExcl = true; } },
+    ],
+  },
+};
+
+// ---------- state ----------
+const ORIGINAL = {};
+let S = { f: { custom: {} }, saved: [], history: [], last: null, focus: null, pick: null, split: {}, draft: null, editing: false, seen: [] };
+const ALL = Object.keys(PROBLEMS);
+const RULE_IDS = SECTIONS.flatMap(s => s[1]);
+RULE_IDS.forEach(id => { ORIGINAL[id] = computedText(id, {}); });
+
+const clone = o => JSON.parse(JSON.stringify(o));
+const active = f => ALL.filter(p => PROBLEMS[p].active(f));
+const ruleNo = id => id.slice(1);
+
+// problems that share a rule are decided together
+function groups(ids) {
+  const out = [], seen = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const g = [id]; seen.add(id);
+    for (let i = 0; i < g.length; i++)
+      for (const other of ids)
+        if (!seen.has(other) && PROBLEMS[g[i]].rules.some(r => PROBLEMS[other].rules.includes(r))) { g.push(other); seen.add(other); }
+    out.push(g);
+  }
+  return out;
+}
+const gkey = g => g.slice().sort().join("+");
+const shared = g => PROBLEMS[g[0]].rules.filter(r => g.every(p => PROBLEMS[p].rules.includes(r)));
+
+function currentUnit() {
+  const open = active(S.f);
+  if (!open.length) return null;
+  let gs = groups(open).flatMap(g => (g.length > 1 && (S.split[gkey(g)] || !GROUP_OPTIONS[gkey(g)])) ? g.map(x => [x]) : [g]);
+  const focusIdx = gs.findIndex(g => g.includes(S.focus));
+  return gs[focusIdx >= 0 ? focusIdx : 0];
+}
+
+// ---------- proposals ----------
+function propose(unit, opt, draft) {
+  const f2 = clone(S.f);
+  opt.apply(f2);
+  if (draft) for (const [id, t] of Object.entries(draft)) {
+    f2.custom[id] = t;
+    if (opt.reword) opt.reword(f2, id, t);
+  }
+  // a rule whose meaning a decision changes drops any hand wording it had
+  for (const id of RULE_IDS) if (computedText(id, f2) !== computedText(id, S.f) && !(draft && id in draft)) delete f2.custom[id];
+  const before = active(S.f), after = active(f2);
+  const changes = RULE_IDS.filter(id => text(id, f2) !== text(id, S.f)).map(id => ({ id, from: text(id, S.f), to: text(id, f2) }));
+  return {
+    f2, changes,
+    closed: before.filter(p => !after.includes(p)),
+    created: after.filter(p => !before.includes(p)),
+    stillOpen: unit.filter(p => after.includes(p)),
+  };
+}
+
+function accept(unit, opt, prop) {
+  S.history.push(clone({ f: S.f, saved: S.saved, seen: S.seen }));
+  const answers = opt.answers || Object.fromEntries(unit.map(p => [p, opt.answer]));
+  for (const p of prop.closed) if (answers[p]) S.saved.push({ p, answer: answers[p] });
+  S.f = prop.f2;
+  S.seen = Array.from(new Set(S.seen.concat(prop.created)));
+  S.last = { closed: prop.closed, created: prop.created, rules: prop.changes.map(c => c.id) };
+  S.pick = null; S.draft = null; S.editing = false;
+  S.focus = prop.created[0] || null;
+  render();
+  prop.changes.forEach(c => { const el = document.getElementById("s-" + c.id); if (el) { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); } });
+}
+
+// ---------- rendering ----------
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function diff(a, b) {
+  if (a === null) return `<ins>${esc(b)}</ins>`;
+  if (b === null) return `<del>${esc(a)}</del>`;
+  const x = a.split(" "), y = b.split(" ");
+  let i = 0; while (i < x.length && i < y.length && x[i] === y[i]) i++;
+  let j = 0; while (j < x.length - i && j < y.length - i && x[x.length - 1 - j] === y[y.length - 1 - j]) j++;
+  const pre = x.slice(0, i).join(" "), post = x.slice(x.length - j).join(" ");
+  const del = x.slice(i, x.length - j).join(" "), ins = y.slice(i, y.length - j).join(" ");
+  return [esc(pre), del && `<del>${esc(del)}</del>`, ins && `<ins>${esc(ins)}</ins>`, esc(post)].filter(Boolean).join(" ");
+}
+
+function renderDoc(unit) {
+  const open = active(S.f);
+  const inOpen = new Set(open.flatMap(p => PROBLEMS[p].rules));
+  const inFocus = new Set((unit || []).flatMap(p => PROBLEMS[p].rules));
+  let h = `<div class="file">delivery-refunds.md · 9 rules extracted</div>
+    <h1>Delivery refunds policy</h1>
+    <p class="lede">What customers get when a parcel is late, lost or damaged.</p>`;
+  for (const [title, ids] of SECTIONS) {
+    h += `<h2>${title}</h2><ol class="clauses">`;
+    for (const id of ids) {
+      const now = text(id, S.f), was = ORIGINAL[id];
+      const state = inOpen.has(id) ? "open" : now !== was ? "changed" : "";
+      h += `<li class="sentence" id="s-${id}" tabindex="0" data-rule="${id}" data-state="${state}" data-focus="${inFocus.has(id)}">
+        <span class="num">${ruleNo(id)}</span><span class="txt">${now === was ? esc(now) : diff(was, now)}</span></li>`;
+    }
+    h += `</ol>`;
+  }
+  document.getElementById("doc").innerHTML = h;
+}
+
+function renderStatus() {
+  const open = active(S.f).length;
+  const fixed = S.saved.length ? new Set(S.saved.map(s => s.p)).size : 0;
+  document.getElementById("status").innerHTML =
+    (open ? `<span class="pill bad">${open} ${open === 1 ? "problem" : "problems"}</span>` : `<span class="pill good">Every rule agrees</span>`) +
+    `<span class="pill">${fixed} fixed</span><span class="pill">${S.saved.length} example ${S.saved.length === 1 ? "customer" : "customers"}</span>`;
+  document.getElementById("undo").disabled = !S.history.length;
+}
+
+function verdictCard(p, id, isShared) {
+  const [say, kind] = PROBLEMS[p].says[id];
+  return `<div class="verdict${isShared ? " shared" : ""}"><span class="who">Rule ${ruleNo(id)}${isShared ? " · in both problems" : ""}</span>
+    <span class="says ${kind}">${esc(say)}</span><q>${esc(text(id, S.f))}</q></div>`;
+}
+
+function proposalHtml(unit, opt) {
+  const prop = propose(unit, opt, S.draft);
+  let h = `<div class="proposal"><div class="h">The change we'd make</div>`;
+  for (const c of prop.changes) {
+    h += `<div class="change"><span class="rid">${c.to === null ? "Remove" : "Rule " + ruleNo(c.id) + " becomes"}</span>`;
+    if (S.editing && c.to !== null) h += `<textarea id="edit-${c.id}" data-rule="${c.id}" aria-label="Wording for rule ${ruleNo(c.id)}">${esc(c.to)}</textarea>`;
+    else h += `<div class="after">${diff(c.from, c.to)}</div>`;
+    h += `</div>`;
+  }
+  h += `<div class="checks">`;
+  const names = ps => ps.map(p => `"${PROBLEMS[p].short}"`).join(" and ");
+  if (prop.closed.length) h += `<div class="check">Fixes ${names(prop.closed)}.</div>`;
+  if (prop.stillOpen.length) h += `<div class="check open">Still open after this: ${names(prop.stillOpen)}.</div>`;
+  if (prop.created.length) h += `<div class="check warn">This wording causes a new problem: ${names(prop.created)}. You can accept it and decide that next, or keep editing.</div>`;
+  else h += `<div class="check">Checked against every rule: nothing new conflicts.</div>`;
+  if (S.saved.length) h += `<div class="check">All ${S.saved.length} example ${S.saved.length === 1 ? "customer you approved still gets" : "customers you approved still get"} the same answer.</div>`;
+  h += `</div><div class="actions">
+    <button class="primary${prop.created.length ? " risky" : ""}" id="accept" type="button">${prop.created.length ? "Accept anyway" : "Accept"}</button>
+    <button class="secondary" id="edit" type="button">${S.editing ? "Done editing" : "Edit the wording"}</button>
+    <button class="secondary" id="cancel" type="button">Choose differently</button></div></div>`;
+  return { h, prop };
+}
+
+function renderDesk(unit) {
+  let h = "";
+  if (S.last) {
+    const fixed = S.last.closed.map(p => PROBLEMS[p].short).join(", ");
+    const made = S.last.created.map(p => PROBLEMS[p].short).join(", ");
+    h += `<div class="banner"><div class="what">
+      ${fixed ? `<span class="fixed">Fixed: ${esc(fixed)}</span>` : ""}
+      ${made ? `<span class="new">New, caused by your last change: ${esc(made)}</span>` : ""}
+      <span style="color:var(--muted)">Changed rule${S.last.rules.length === 1 ? "" : "s"} ${S.last.rules.map(ruleNo).join(", ")} in the document.</span>
+      </div><button class="secondary" id="undo2" type="button">Undo</button></div>`;
+  }
+
+  const open = active(S.f);
+  if (!unit) {
+    h += `<div class="done-card"><h3>Every rule agrees now</h3>
+      <p class="lead">Z3 checked every combination of facts the rules mention. Each one now gets exactly one answer.
+      ${S.saved.length} example customers are saved, so a later change that alters their answer will be flagged.</p>
+      <div class="actions"><button class="primary" id="save" type="button">Save policy</button></div></div>`;
+  } else {
+    const isGroup = unit.length > 1;
+    const p0 = PROBLEMS[unit[0]];
+    const isNew = unit.some(p => S.seen.includes(p));
+    const pos = open.indexOf(unit[0]) + 1;
+    h += `<article class="case"><div class="case-head">`;
+    if (isGroup) {
+      const sh = shared(unit);
+      h += `<div class="eyebrow">${unit.length} problems, both involving rule ${sh.map(ruleNo).join(", ")}</div>
+        <h3>${esc(text(sh[0], S.f))}</h3>`;
+    } else {
+      h += `<div class="eyebrow${isNew ? " new" : ""}">${isNew ? `New problem <span class="tag">caused by your last change</span>` : `Problem ${pos} of ${open.length}`}</div>
+        <h3>${esc(p0.title)}</h3><div class="facts">${p0.facts.map(x => `<span class="fact">${esc(x)}</span>`).join("")}</div>`;
+    }
+    h += `</div><div class="case-body">`;
+    if (isGroup) {
+      const sh = shared(unit);
+      for (const p of unit) {
+        const P = PROBLEMS[p];
+        h += `<div class="ask"><div class="q">${esc(P.title)}</div>
+          <div class="verdicts">${P.rules.map(r => verdictCard(p, r, sh.includes(r))).join("")}</div></div>`;
+      }
+      h += `<p class="note">One decision about rule ${sh.map(ruleNo).join(", ")} can settle both. If you'd rather think about them one at a time, decide each separately.</p>`;
+    } else {
+      h += `<p class="lead">${p0.rules.length > 2 ? `These ${p0.rules.length} rules can't all be followed for this customer:` : "Two rules give opposite answers for this customer:"}</p>
+        <div class="verdicts">${p0.rules.map(r => verdictCard(unit[0], r, false)).join("")}</div>`;
+      if (p0.note) h += `<p class="note">${esc(p0.note)}</p>`;
+    }
+    const opts = isGroup ? GROUP_OPTIONS[gkey(unit)] : { question: p0.question, options: p0.options };
+    h += `<div class="ask"><div class="q">${esc(opts.question)}</div><div class="choices">`;
+    opts.options.forEach((o, i) => { h += `<button class="choice" type="button" data-i="${i}" aria-pressed="${S.pick === i}">${esc(o.label)}</button>`; });
+    if (isGroup) h += `<button class="choice quiet" type="button" id="split">Decide each one separately</button>`;
+    h += `</div></div>`;
+    const opt = S.pick !== null ? opts.options[S.pick] : null;
+    if (opt && opt.depends) h += `<div class="depends"><label for="depends">What does it depend on?</label><input type="text" id="depends" value="${esc(opt.depends)}"></div>`;
+    let prop = null;
+    if (opt) { const r = proposalHtml(unit, opt); h += r.h; prop = r.prop; }
+    const rows = unit.flatMap(p => PROBLEMS[p].rules).filter((v, i, a) => a.indexOf(v) === i);
+    h += `<details class="logic"><summary>Show the logic</summary><pre>${rows.map(r => `Rule ${ruleNo(r)}:  ${esc(logic(r, S.f))}`).join("\n")}
+${unit.map(p => `Z3 example:  ${PROBLEMS[p].model}  ⇒  no answer satisfies every rule`).join("\n")}</pre></details>`;
+    h += `</div></article>`;
+    S._ctx = { unit, opts, opt, prop };
+  }
+
+  const others = open.filter(p => !(unit || []).includes(p));
+  if (others.length) {
+    h += `<div class="queue"><div class="h">Also to fix</div>`;
+    for (const p of others) h += `<button class="row${S.seen.includes(p) ? " new" : ""}" type="button" data-focus="${p}"><span class="t">${esc(PROBLEMS[p].short)}</span><span class="r">rules ${PROBLEMS[p].rules.map(ruleNo).join(", ")}</span></button>`;
+    h += `</div>`;
+  }
+  if (S.saved.length) {
+    h += `<details class="saved"><summary>Example customers you've approved (${S.saved.length})</summary><ul>`;
+    for (const s of S.saved) h += `<li><span>${esc(PROBLEMS[s.p].short)}</span><b>${esc(s.answer)}</b></li>`;
+    h += `</ul></details>`;
+  }
+  document.getElementById("desk").innerHTML = h;
+}
+
+function render() {
+  const unit = currentUnit();
+  renderStatus(); renderDoc(unit); renderDesk(unit);
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => { t.hidden = true; }, 3800);
+}
+
+function undo() {
+  const prev = S.history.pop(); if (!prev) return;
+  S.f = prev.f; S.saved = prev.saved; S.seen = prev.seen;
+  S.last = null; S.pick = null; S.draft = null; S.editing = false;
+  render(); toast("Undid the last change.");
+}
+
+// ---------- events ----------
+document.addEventListener("click", e => {
+  const t = e.target.closest("button, .sentence");
+  if (!t) return;
+  const ctx = S._ctx || {};
+  if (t.id === "undo" || t.id === "undo2") return undo();
+  if (t.id === "reextract") return toast("In the full tool this reads the document again and shows each rule that changed next to your fixes, so you choose which to keep.");
+  if (t.id === "save") return toast("Saved as delivery-refunds.policy.yaml with 9 rules and " + S.saved.length + " example customers.");
+  if (t.id === "split") { S.split[gkey(ctx.unit)] = true; S.pick = null; S.focus = ctx.unit[0]; return render(); }
+  if (t.classList.contains("choice") && t.dataset.i !== undefined) { S.pick = +t.dataset.i; S.draft = null; S.editing = false; return render(); }
+  if (t.id === "cancel") { S.pick = null; S.draft = null; S.editing = false; return render(); }
+  if (t.id === "edit") {
+    if (S.editing) { S.editing = false; return render(); }
+    S.editing = true;
+    S.draft = Object.fromEntries(ctx.prop.changes.filter(c => c.to !== null).map(c => [c.id, c.to]));
+    return render();
+  }
+  if (t.id === "accept") return accept(ctx.unit, ctx.opt, propose(ctx.unit, ctx.opt, S.draft));
+  if (t.dataset.focus) { S.focus = t.dataset.focus; S.pick = null; S.draft = null; S.editing = false; return render(); }
+  if (t.classList.contains("sentence")) {
+    const hit = active(S.f).find(p => PROBLEMS[p].rules.includes(t.dataset.rule));
+    if (hit) { S.focus = hit; S.pick = null; S.draft = null; S.editing = false; render(); }
+  }
+});
+document.addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.classList && e.target.classList.contains("sentence")) { e.preventDefault(); e.target.click(); }
+});
+// re-check the wording as the author types, without re-rendering the box they're typing in
+document.addEventListener("input", e => {
+  if (!e.target.dataset || !e.target.dataset.rule || e.target.tagName !== "TEXTAREA") return;
+  S.draft = S.draft || {};
+  S.draft[e.target.dataset.rule] = e.target.value;
+  clearTimeout(S._typing);
+  S._typing = setTimeout(() => {
+    const ctx = S._ctx; const prop = propose(ctx.unit, ctx.opt, S.draft);
+    const box = document.querySelector(".checks");
+    const acceptBtn = document.getElementById("accept");
+    const names = ps => ps.map(p => `"${PROBLEMS[p].short}"`).join(" and ");
+    let h = "";
+    if (prop.closed.length) h += `<div class="check">Fixes ${names(prop.closed)}.</div>`;
+    if (prop.stillOpen.length) h += `<div class="check open">Still open after this: ${names(prop.stillOpen)}.</div>`;
+    h += prop.created.length ? `<div class="check warn">This wording causes a new problem: ${names(prop.created)}. You can accept it and decide that next, or keep editing.</div>`
+                             : `<div class="check">Checked against every rule: nothing new conflicts.</div>`;
+    box.innerHTML = h;
+    acceptBtn.textContent = prop.created.length ? "Accept anyway" : "Accept";
+    acceptBtn.classList.toggle("risky", prop.created.length > 0);
+  }, 250);
+});
+
+render();
+</script>
+</body>
+</html>
