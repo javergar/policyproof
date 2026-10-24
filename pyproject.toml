@@ -85,3 +85,10 @@ type = "forbidden"
 source_modules = ["policyproof.eval.run"]
 forbidden_modules = ["policyproof.effects.llm", "policyproof.effects.jev", "pydantic", "pydantic_ai", "boto3",
                      "botocore", "typesafe_sdk", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "Authoring's document, plain words, examples and merging are pure: the core and guards only"
+type = "forbidden"
+source_modules = ["policyproof.authoring.document"]
+forbidden_modules = ["policyproof.effects", "policyproof.eval", "pydantic", "pydantic_ai", "boto3", "botocore",
+                     "typesafe_sdk", "httpx"]
