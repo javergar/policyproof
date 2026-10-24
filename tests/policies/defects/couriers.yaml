@@ -1,0 +1,20 @@
+# The courier clashes alone, with no gaps: C4 clashes with C5 (late, asked) and with C6 (lost).
+policy: defect-couriers
+version: "1"
+sorts:
+  Carrier: [POST, COURIER]
+variables:
+  carrier: { sort: Carrier, role: system, description: Who delivered the parcel. }
+  daysLate: { sort: Int, role: system, description: Days after the promised date. }
+  asked: { sort: Bool, role: ask, question: "Would you like a refund?", description: The customer asked for a refund. }
+  lost: { sort: Bool, role: system, description: The parcel was lost. }
+  refund: { sort: Bool, role: derived, description: The customer gets a refund. }
+rules:
+  - { id: C4, when: { eq: [carrier, COURIER] }, then: { not: refund } }
+  - { id: C5, when: { and: [{ eq: [carrier, COURIER] }, { gt: [daysLate, 0] }, asked] }, then: refund }
+  - { id: C6, when: lost, then: refund }
+  - { id: C9, constraint: { ge: [daysLate, 0] } }
+  - { id: C10, when: { and: [{ eq: [carrier, POST] }, { not: lost }] }, then: { not: refund } }
+outcomes:
+  refund: { refund: true }
+  nothing: { refund: false }

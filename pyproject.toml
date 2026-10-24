@@ -97,6 +97,6 @@ forbidden_modules = ["policyproof.effects", "policyproof.eval", "pydantic", "pyd
 [[tool.importlinter.contracts]]
 name = "Authoring ports and proposals need no model SDK"
 type = "forbidden"
-source_modules = ["policyproof.authoring.ports"]
+source_modules = ["policyproof.authoring.ports", "policyproof.authoring.propose"]
 forbidden_modules = ["policyproof.authoring.llm", "policyproof.effects.llm", "policyproof.effects.jev", "pydantic",
                      "pydantic_ai", "boto3", "botocore", "typesafe_sdk", "httpx"]
