@@ -1,0 +1,10 @@
+# A gap: nothing says what happens to a parcel that wasn't late, so no outcome is ever proven for it.
+policy: defect-gap
+version: "1"
+variables:
+  late: { sort: Bool, role: system, description: The parcel arrived late. }
+  refund: { sort: Bool, role: derived, description: The customer gets a refund. }
+rules:
+  - { id: G1, when: late, then: refund }
+outcomes:
+  refund: { refund: true }

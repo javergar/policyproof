@@ -34,6 +34,7 @@ from policyproof.core.syntax import (
     Lit,
     Not,
     Or,
+    Outcome,
     RealLit,
     RealSort,
     Rule,
@@ -247,22 +248,77 @@ def fact(var: str, value: Lit) -> tuple[Label, Expr]:
     return FactLabel(var, value), Cmp("eq", Var(var), value)
 
 
-def totality(c: Compiled, inputs: frozenset[str]) -> SatResult:
-    """`Sat(witness)` when some values of `inputs` that meet the rules about inputs alone leave no values of the
-    other variables that meet every rule: the policy has no answer for that case. `Unsat` when it always has one."""
+def _split(c: Compiled, inputs: frozenset[str]) -> tuple[list[z3.BoolRef], z3.BoolRef, list[z3.ExprRef]]:
+    """The rules about inputs alone, the conjunction of the other rules, and the non-input variables."""
     domain = [r for r in c.policy.rules if free_vars(rule_expr(r)) <= inputs]
-    rest = [r for r in c.policy.rules if r not in domain]
+    rest = z3.And(*[c.rules[r.id] for r in c.policy.rules if r not in domain], c.ctx)
     others = [v for n, v in c.variables.items() if n not in inputs]
-    no_answer = z3.Not(z3.And(*[c.rules[r.id] for r in rest], c.ctx), c.ctx)
-    s = _solver(c)
-    s.add(*[c.rules[r.id] for r in domain])
-    s.add(z3.ForAll(others, no_answer) if others else no_answer)
+    return [c.rules[r.id] for r in domain], rest, others
+
+
+def _exists(others: list[z3.ExprRef], f: z3.BoolRef) -> z3.BoolRef:
+    return z3.Exists(others, f) if others else f
+
+
+def _forall(others: list[z3.ExprRef], f: z3.BoolRef) -> z3.BoolRef:
+    return z3.ForAll(others, f) if others else f
+
+
+def _outcome(c: Compiled, o: Outcome) -> z3.BoolRef:
+    return z3.And(*[_eq(c.variables[var], to_z3(c, lit)) for var, lit in o.assignment], c.ctx)
+
+
+def _witness(c: Compiled, s: z3.Solver, inputs: frozenset[str]) -> SatResult:
     match s.check():
         case z3.sat:
             m = s.model()
-            witness = {n: _to_lit(c, c.sorts[n], m.eval(c.variables[n], model_completion=True)) for n in sorted(inputs)}
-            return Sat(witness)
+            return Sat({n: _to_lit(c, c.sorts[n], m.eval(c.variables[n], model_completion=True))
+                        for n in sorted(inputs)})
         case z3.unsat:
             return Unsat(frozenset())
         case _:
             return Unknown(s.reason_unknown())
+
+
+def totality(c: Compiled, inputs: frozenset[str], *, blocked: Sequence[frozenset[str]] = ()) -> SatResult:
+    """`Sat(witness)` when some values of `inputs` that meet the rules about inputs alone leave no values of the
+    other variables that meet every rule: the policy has no answer for that case. `Unsat` when it always has one.
+
+    Each `blocked` set of rule ids must be able to hold together for the witness, so a clash among exactly those rules
+    is never found again (the problem finder enumerates distinct clashes this way)."""
+    domain, rest, others = _split(c, inputs)
+    s = _solver(c)
+    s.add(*domain)
+    s.add(_forall(others, z3.Not(rest, c.ctx)))
+    for ids in blocked:
+        s.add(_exists(others, z3.And(*[c.rules[i] for i in ids], c.ctx)))
+    return _witness(c, s, inputs)
+
+
+def undecided(c: Compiled, inputs: frozenset[str], *, blocked: Sequence[Expr] = ()) -> SatResult:
+    """`Sat(witness)` when some values of `inputs` meet every rule yet prove no outcome: for each outcome, some values
+    of the other variables meet the rules without it. `Unsat` when every case is decided, or there are no outcomes.
+    Each `blocked` expression is ruled out for the witness."""
+    if not c.policy.outcomes:
+        return Unsat(frozenset())
+    domain, rest, others = _split(c, inputs)
+    s = _solver(c)
+    s.add(*domain)
+    s.add(_exists(others, rest))
+    for o in c.policy.outcomes:
+        s.add(_exists(others, z3.And(rest, z3.Not(_outcome(c, o)))))
+    s.add(*[z3.Not(to_z3(c, b)) for b in blocked])
+    return _witness(c, s, inputs)
+
+
+def decidable(c: Compiled, inputs: frozenset[str], *, given: Sequence[Expr]) -> SatResult:
+    """`Sat(witness)` when some values of `inputs` that meet `given` and every rule prove an outcome."""
+    if not c.policy.outcomes:
+        return Unsat(frozenset())
+    domain, rest, others = _split(c, inputs)
+    s = _solver(c)
+    s.add(*domain)
+    s.add(_exists(others, rest))
+    s.add(*[to_z3(c, g) for g in given])
+    s.add(z3.Or(*[_forall(others, z3.Implies(rest, _outcome(c, o))) for o in c.policy.outcomes], c.ctx))
+    return _witness(c, s, inputs)

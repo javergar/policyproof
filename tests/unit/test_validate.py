@@ -11,6 +11,7 @@ from policyproof.core.validate import (
     ImpossibleInput,
     NearDuplicate,
     NotTotal,
+    Undecided,
     UnreachableOutcome,
     UnusedVariable,
     gate,
@@ -103,3 +104,10 @@ def test_a_check_the_solver_gives_up_on_is_an_error_not_a_pass():
     from policyproof.core.validate import SolverGaveUp
     found = validate(_compiled(HARD, timeout_ms=300))
     assert any(isinstance(f, SolverGaveUp) and f.check.startswith("impossible input b") for f in found)
+
+
+def test_gap_is_a_warning():
+    found = report("defects/gap.yaml")
+    assert Undecided({"late": BoolLit(False)}) in found
+    assert severity(Undecided({"late": BoolLit(False)})) == "warning"
+    assert is_successful(gate(compile(load("defects/gap.yaml"))))

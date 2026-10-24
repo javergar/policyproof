@@ -11,7 +11,19 @@ from returns.result import Failure, Result, Success
 
 from policyproof.core.render import pretty
 from policyproof.core.semantics import free_vars, rule_expr
-from policyproof.core.solver import Compiled, Model, RuleLabel, Sat, SatResult, Unknown, Unsat, check, fact, totality
+from policyproof.core.solver import (
+    Compiled,
+    Model,
+    RuleLabel,
+    Sat,
+    SatResult,
+    Unknown,
+    Unsat,
+    check,
+    fact,
+    totality,
+    undecided,
+)
 from policyproof.core.syntax import (
     Ask,
     BoolLit,
@@ -38,6 +50,14 @@ class Conflict:
 @dataclass(frozen=True, slots=True)
 class NotTotal:
     """For these input values the rules leave no possible answer."""
+
+    witness: Model
+
+
+@dataclass(frozen=True, slots=True)
+class Undecided:
+    """For these input values every rule holds but no outcome is proven: a gap in the policy. A warning, because a
+    person deciding such cases (escalation) can be the intended answer; the studio asks the author which."""
 
     witness: Model
 
@@ -105,7 +125,7 @@ class DefinitionToReview:
     rule: str
 
 
-type Finding = (Conflict | NotTotal | ImpossibleInput | UnreachableOutcome | SolverGaveUp | UnusedVariable
+type Finding = (Conflict | NotTotal | Undecided | ImpossibleInput | UnreachableOutcome | SolverGaveUp | UnusedVariable
                 | NearDuplicate | DisjointGroups | OverlappingOutcomes | InputsRelated | ConstraintRule
                 | DefinitionToReview)
 type Severity = Literal["error", "warning", "review"]
@@ -116,7 +136,7 @@ def severity(f: Finding) -> Severity:
     match f:
         case Conflict() | NotTotal() | ImpossibleInput() | UnreachableOutcome() | SolverGaveUp():
             return "error"
-        case UnusedVariable() | NearDuplicate() | DisjointGroups():
+        case Undecided() | UnusedVariable() | NearDuplicate() | DisjointGroups():
             return "warning"
         case OverlappingOutcomes() | InputsRelated() | ConstraintRule() | DefinitionToReview():
             return "review"
@@ -214,6 +234,15 @@ def _logical(c: Compiled) -> list[Finding]:
             found.append(NotTotal(witness))
         case Unknown(reason):
             found.append(SolverGaveUp("totality", reason))
+        case Unsat():
+            pass
+        case other:
+            assert_never(other)
+    match undecided(c, inputs):
+        case Sat(witness):
+            found.append(Undecided(witness))
+        case Unknown(reason):
+            found.append(SolverGaveUp("undecided", reason))
         case Unsat():
             pass
         case other:

@@ -79,3 +79,52 @@ def test_an_irrational_model_value_is_approximated_not_a_crash():
     assert isinstance(result, Sat)
     x = result.model["x"]
     assert isinstance(x, RealLit) and abs(x.value * x.value - 2) < 1e-9
+
+
+def _inputs(c):
+    from policyproof.core.syntax import Ask, System
+    return frozenset(v.name for v in c.policy.variables if isinstance(v.role, System | Ask))
+
+
+def test_blocked_rule_sets_are_not_found_again():
+    from conftest import load
+
+    from policyproof.core.solver import totality
+    c = compile(load("defects/not_total.yaml"))
+    assert isinstance(totality(c, _inputs(c)), Sat)
+    assert isinstance(totality(c, _inputs(c), blocked=[frozenset({"R4", "R8", "R10"})]), Unsat)
+
+
+def test_undecided_respects_blocked():
+    from conftest import load
+
+    from policyproof.core.solver import undecided
+    from policyproof.core.syntax import Cmp
+    c = compile(load("defects/gap.yaml"))
+    assert undecided(c, _inputs(c)) == Sat({"late": BoolLit(False)})
+    assert isinstance(undecided(c, _inputs(c), blocked=[Cmp("eq", Var("late"), BoolLit(False))]), Unsat)
+
+
+def test_undecided_needs_outcomes(toy):
+    from dataclasses import replace
+
+    from policyproof.core.solver import undecided
+    from policyproof.core.syntax import CheckedPolicy
+    c = compile(CheckedPolicy(replace(toy, outcomes=())))
+    assert isinstance(undecided(c, _inputs(c)), Unsat)
+
+
+def test_decidable():
+    from conftest import load
+
+    from policyproof.core.solver import decidable
+    from policyproof.core.syntax import Cmp
+    c = compile(load("defects/gap.yaml"))
+    assert isinstance(decidable(c, _inputs(c), given=[]), Sat)
+    assert isinstance(decidable(c, _inputs(c), given=[Cmp("eq", Var("late"), BoolLit(False))]), Unsat)
+
+
+def test_the_toy_policy_decides_everyone(toy):
+    from policyproof.core.solver import undecided
+    c = compile(toy)
+    assert isinstance(undecided(c, _inputs(c)), Unsat)
