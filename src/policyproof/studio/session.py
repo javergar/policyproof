@@ -33,10 +33,20 @@ from policyproof.authoring.propose import (
     reword,
 )
 from policyproof.core._result import unreachable
-from policyproof.core.problems import Clash, Customer, Found, Gap, GaveUp, OutrightConflict, Problems, decides
+from policyproof.core.problems import (
+    Clash,
+    Customer,
+    Found,
+    Gap,
+    GaveUp,
+    OutrightConflict,
+    Problems,
+    decides,
+    still_a_problem,
+)
 from policyproof.core.render import pretty
 from policyproof.core.semantics import rule_expr
-from policyproof.core.solver import compile
+from policyproof.core.solver import Compiled, compile
 from policyproof.core.syntax import Ask, CheckedPolicy, Rule, System, Variable
 from policyproof.core.typecheck import check_policy
 from policyproof.effects.errors import LLMError, describe
@@ -518,12 +528,22 @@ class Session:
         files = Files(draft.doc.text, draft.extraction, draft.examples,
                       replace(self.files.workspace, fixed=(*self.files.workspace.fixed, *fixed)))
         changed = self._changed_labels(draft.doc, draft.extraction)
+        c1 = compile(self.ctx.policy)
         await self._write(files, None)
-        self.new_keys = frozenset({e.item.key for e in self.listing.entries} - o.keys)
+        self.new_keys = frozenset(e.item.key for e in self.listing.entries if self._is_new(e, o.keys, c1))
         self.listing = items(self.ctx, new_keys=self.new_keys)
         new_titles = tuple(e.item.title for e in self.listing.entries if e.item.key in self.new_keys)
         self.banner = w.Banner(fixed, new_titles, changed)
         return self.view()
+
+    def _is_new(self, e: Entry, before: frozenset[str], c1: Compiled) -> bool:
+        """A problem is new when it wasn't a problem before the change, judged by Z3 rather than by its key: a fix
+        gives the rewritten rule a new id, so an old clash with it has a new key."""
+        if not e.problems:
+            return e.item.key not in before
+        found = self.ctx.problems.found
+        return any(isinstance(f, Clash | Gap) and not still_a_problem(c1, f)
+                   for f in (found[i] for i in e.problems))
 
     def _changed_labels(self, doc: Document, ex: Extraction) -> tuple[str, ...]:
         written = set(touched(self.ctx.doc, doc))

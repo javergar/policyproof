@@ -102,3 +102,13 @@ def test_policyproof_studio_is_a_subcommand(tmp_path, capsys):
     from policyproof.eval.cli import main
     assert main(["studio", str(tmp_path / "missing.md")]) == 2
     assert "doesn't exist" in capsys.readouterr().err
+
+
+def test_the_built_page_is_served(tmp_path):
+    from policyproof.studio.server import STATIC
+    session = opened(tmp_path)
+    c = TestClient(app(Studio(tmp_path, session.ports, session), TOKEN))
+    page = c.get(f"/?t={TOKEN}")
+    assert page.status_code == 200 and '<div id="root"></div>' in page.text
+    script = next(p for p in (STATIC / "assets").iterdir() if p.suffix == ".js")
+    assert c.get(f"/assets/{script.name}").status_code == 200

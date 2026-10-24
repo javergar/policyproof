@@ -219,3 +219,17 @@ def test_the_studio_opens_a_pasted_document(tmp_path):
     assert isinstance(reply, w.StateReply) and (tmp_path / "couriers.md").read_text() == TEXT
     again = run(studio.start(w.StartRequest(None, "couriers", TEXT)))
     assert isinstance(again, w.ErrorReply)
+
+
+LOST_TEXT = "Courier parcels are never refunded, unless they are lost."
+LOST_PART = Extraction(CheckedPolicy(replace(POLICY, rules=(When("x", And((COURIER, Not(Var("lost")))),
+                                                                  Not(Var("refund"))),))),
+                       (Link("x", Anchor("Couriers", LOST_TEXT)),), ())
+
+
+def test_a_problem_that_was_already_there_is_not_new(tmp_path):
+    s = opened(tmp_path, ports(extracted=(LOST_PART,), edits=((Replace(S4, LOST_TEXT),),)))
+    view = state(run(s.accept(w.AcceptRequest(proposal(s, key="clash:C4+C6").id, ()))))
+    late = [i for i in view.items if i.kind == "clash"]
+    assert late and not any(i.new for i in late)  # the late-courier clash was there before, under another rule id
+    assert view.banner is not None and view.banner.new == ()

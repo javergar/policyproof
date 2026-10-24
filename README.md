@@ -119,7 +119,7 @@ wantsRefund:
 ## Authoring a policy from a document: `policyproof.authoring`
 
 Policies are usually written for people, in markdown. The authoring layer turns one into a policy and helps its author
-fix what's wrong with it, without reading logic. A local studio on top of it comes next (milestone 5).
+fix what's wrong with it, without reading logic. `policyproof studio` (below) puts it in front of the author.
 
 - **Extraction** (`authoring.llm.LLMExtractor`, any pydantic-ai model, `[extract]` extra): the whole document in one
   pass, every rule linked to the sentence it came from, and the sentences that gave no rule.
@@ -134,6 +134,35 @@ fix what's wrong with it, without reading logic. A local studio on top of it com
 `python -m policyproof.authoring.bench --model MODEL DOC CASES [NAMES]` scores an extractor on a document against a
 hand-written policy and its eval cases. The reference documents are in `examples/authoring/`.
 
+## The studio: `policyproof studio`
+
+A local page for the person who owns the policy: an operations, service or legal author who has never read a formula.
+
+```bash
+pip install 'policyproof[studio]'
+policyproof studio delivery-refunds.md --model bedrock:us.anthropic.claude-sonnet-4-5-20250929-v1:0
+```
+
+The document sits on the left. On the right is the next thing to decide, always as an example customer in plain
+words: what each rule involved says for them, quoted from the document, and one question ("What should this customer
+get?"). The author answers; the studio proposes the smallest change to the document's sentences, Z3 checks it against
+every rule and every approved example customer, and the author accepts it, rewords it ("Edit the wording" is checked
+as they type) or chooses differently. Problems that share a rule are decided together, a change that causes a new
+problem says so, and every accept is written to disk straight away and can be undone. Every validator finding is
+shown the same way: contradictions, customers no rule decides, sentences nothing was taken from, two names for one
+thing, outcomes nobody can get. Warnings can be dismissed with a reason, which is kept; they come back with it if the
+rules involved change. When the document is edited in another editor, "Extract again" shows each sentence that now
+reads differently and lets the author keep their fix or take the new reading.
+
+Next to `delivery-refunds.md` it keeps `delivery-refunds.policy.yaml`, `delivery-refunds.examples.yaml` (the approved
+example customers, each with facts that prove its outcome) and a `.delivery-refunds.studio/` folder (links from rules
+to sentences, dismissals and their reasons, the undo history). All plain text, ready for git. The server listens on
+127.0.0.1 only and needs the token in the link it prints. Without `--model` it opens a document that already has a
+policy and offers everything that needs no model.
+
+`uv run python scripts/studio_demo.py` tries it with no model at all: the couriers policy from the design, with
+scripted stand-ins for the drafter and extractor and real Z3 checks.
+
 ## Development
 
 ```bash
@@ -143,6 +172,17 @@ PP_BEDROCK_MODEL=... TYPESAFE_API_KEY=... uv run pytest -m live   # real models;
 PP_UPDATE_SNAPSHOTS=1 uv run pytest tests/unit/test_prompts.py     # after an intended prompt change
 uv run pytest --hypothesis-profile=ci     # the laws with 1000 examples each (about 8 minutes)
 uv run python -m policyproof.schema       # regenerate policy.schema.json after changing the schema builder
+uv run python -m policyproof.studio.schema  # regenerate the studio API's schema after changing studio/wire.py
+```
+
+The studio's page is TypeScript (React, with an Elm-style update loop) under `studio/`; the built page ships inside
+the package, so only its developers need Node:
+
+```bash
+cd studio && npm install
+npm run codegen      # the page's types, from the two JSON Schemas
+npm test && npm run typecheck
+npm run build        # into src/policyproof/studio/static/, which is committed
 ```
 
 Licensed under Apache-2.0.

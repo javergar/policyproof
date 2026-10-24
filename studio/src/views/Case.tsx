@@ -7,10 +7,10 @@ const EYEBROW: Record<Item["level"], string> = {
   error: "Problem", uncovered: "A sentence to check", warning: "To answer", review: "To review",
 };
 
-function VerdictCard({ v, shared }: { v: Verdict; shared: boolean }) {
+function VerdictCard({ v, shared, of = 0 }: { v: Verdict; shared: boolean; of?: number }) {
   return (
     <div className={shared ? "verdict shared" : "verdict"}>
-      <span className="who">{v.rule}{shared ? " · in every one of these" : ""}</span>
+      <span className="who">{v.rule}{shared ? (of === 2 ? " · in both problems" : " · in all of these problems") : ""}</span>
       {v.says && <span className={`says ${v.tone}`}>{v.says}</span>}
       <q>{v.sentence}</q>
     </div>
@@ -123,7 +123,7 @@ export function Group({ unit, state, dispatch }: { unit: Unit; state: State; dis
           <div className="ask member" key={item.key}>
             <div className="q">{item.title}</div>
             {item.facts.length > 0 && <div className="facts">{item.facts.map((f) => <span className="fact" key={f}>{f}</span>)}</div>}
-            <div className="verdicts">{item.verdicts.map((v, i) => <VerdictCard key={i} v={v} shared={sharedRules.includes(v.rule)} />)}</div>
+            <div className="verdicts">{item.verdicts.map((v, i) => <VerdictCard key={i} v={v} shared={sharedRules.includes(v.rule)} of={unit.items.length} />)}</div>
             <div className="q small">{item.question}</div>
             <Choices item={item} state={state} dispatch={dispatch} inGroup={true} />
           </div>
