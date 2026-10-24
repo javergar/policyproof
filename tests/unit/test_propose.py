@@ -121,3 +121,24 @@ def test_llm_errors_stop_at_once():
     drafter = Drafter([Failure(Unavailable("down"))])
     result = run(propose(state(), BEFORE, (LATE,), Choose("refund"), drafter=drafter, extractor=Extractor([])))
     assert result == Failure(Unavailable("down")) and len(drafter.failures) == 1
+
+
+def test_a_quote_missing_its_period_still_replaces_the_rule():
+    """C2: the document is edited through a near-verbatim quote, so the rule of the sentence really replaced goes."""
+    misquoted = Replace(Anchor(S4.section, S4.text.removesuffix(".")), GOOD_TEXT)
+    p = run(propose(state(), BEFORE, (LATE,), Choose("refund"), drafter=Drafter([Success((misquoted,))]),
+                    extractor=Extractor([Success(GOOD_PART)]))).unwrap()
+    assert p.attempts == 1 and LATE in p.fixes and p.still_open == ()
+    assert "C4" not in {r.id for r in p.after.extraction.policy.rules}
+    assert all(link.anchor != S4 for link in p.after.extraction.links)
+
+
+def test_a_replacement_without_a_period_is_extracted_not_dropped():
+    """C1: the replaced sentence keeps its full stop, its neighbour keeps its rule, and the new text is extracted."""
+    text = "A late courier parcel is refunded when the customer asks"
+    extractor = Extractor([Success(part(When("x", And((COURIER, LATE_ASKED)), Var("refund")), text + "."))])
+    p = run(reword(state(), BEFORE, (LATE,), (Replace(S5, text),), extractor=extractor)).unwrap()
+    _, only, _ = extractor.calls[0]
+    assert only == (Anchor("Couriers", text + "."),)
+    rules = {r.id for r in p.after.extraction.policy.rules}
+    assert "C5" not in rules and "C6" in rules

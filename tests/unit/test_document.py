@@ -3,7 +3,7 @@ from pathlib import Path
 
 from returns.result import Failure, Success
 
-from policyproof.authoring.document import Anchor, Insert, Remove, Replace, apply, locate, parse, touched
+from policyproof.authoring.document import Anchor, Insert, Remove, Replace, apply, gone, locate, parse, touched
 
 DELIVERY = (Path(__file__).parent.parent / "documents" / "delivery.md").read_text()
 
@@ -85,7 +85,7 @@ def test_touched_names_the_new_sentences():
                      "Courier parcels are never refunded, unless they are lost."),
              Insert("Couriers", None, "Insured parcels are refunded. Pets are not.")]
     after = apply(doc, edits).unwrap()
-    assert touched(doc, after, edits) == (
+    assert touched(doc, after) == (
         Anchor("Couriers", "Courier parcels are never refunded, unless they are lost."),
         Anchor("Couriers", "Insured parcels are refunded."), Anchor("Couriers", "Pets are not."))
 
@@ -93,3 +93,30 @@ def test_touched_names_the_new_sentences():
 def test_no_edits_is_the_identity():
     doc = parse(DELIVERY)
     assert apply(doc, []) == Success(doc)
+
+
+def test_changed_and_gone_follow_the_text_not_the_quote():
+    """What an edit wrote and what it removed come from comparing the documents, so a quote missing its final
+    period (which `apply` still resolves) is tracked as the sentence it really replaced."""
+    doc = parse(DELIVERY)
+    misquoted = Anchor("Couriers", "Courier parcels are never refunded")
+    after = apply(doc, [Replace(misquoted, "Courier parcels are never refunded, unless they are lost.")]).unwrap()
+    assert touched(doc, after) == (Anchor("Couriers", "Courier parcels are never refunded, unless they are lost."),)
+    assert gone(doc, after) == (Anchor("Couriers", "Courier parcels are never refunded."),)
+
+
+def test_a_replacement_keeps_its_sentence_end():
+    doc = parse(DELIVERY)
+    at = Anchor("Couriers", "A late courier parcel is refunded if the customer asks.")
+    after = apply(doc, [Replace(at, "A late courier parcel is refunded when the customer asks")]).unwrap()
+    expected = "- A late courier parcel is refunded when the customer asks. Lost parcels are always refunded.\n"
+    assert expected in after.text
+    assert Anchor("Couriers", "Lost parcels are always refunded.") in anchors(after)
+
+
+def test_apply_refuses_a_loose_quote_and_names_the_nearest():
+    doc = parse("## Couriers\n\nCourier parcels are never refunded. Lost parcels are always refunded.\n")
+    result = apply(doc, [Replace(Anchor("Couriers", "Courier parcels are always refunded."), "x.")])
+    assert isinstance(result, Failure) and "did you mean" in result.failure()
+    beyond = apply(doc, [Remove(Anchor("Couriers", "Lost parcels are always refunded.", 5))])
+    assert isinstance(beyond, Failure)

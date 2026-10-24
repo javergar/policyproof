@@ -12,7 +12,7 @@ from typing import assert_never
 
 from returns.result import Failure, Result, Success
 
-from policyproof.authoring.document import Document, Edit, Remove, Replace, apply, touched
+from policyproof.authoring.document import Document, Edit, apply, gone, touched
 from policyproof.authoring.examples import Example, broken, holds
 from policyproof.authoring.extraction import Extraction
 from policyproof.authoring.merge import Additions, additions, merge
@@ -136,8 +136,7 @@ async def _evaluate(state: Draft, before: Problems, target: Sequence[int], edits
             return Success(_Tried(EditFailed(message)))
         case _:
             unreachable()
-    written = touched(state.doc, doc, edits)
-    replaced = [e.at for e in edits if isinstance(e, Replace | Remove)]
+    written, replaced = touched(state.doc, doc), gone(state.doc, doc)
     if written:
         match await extractor.extract(doc, vocabulary=state.extraction.policy, only=written):
             case Success(extracted):
