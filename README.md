@@ -116,6 +116,24 @@ wantsRefund:
   phrasings: {true: [money back, a refund], false: [a voucher is fine]}
 ```
 
+## Authoring a policy from a document: `policyproof.authoring`
+
+Policies are usually written for people, in markdown. The authoring layer turns one into a policy and helps its author
+fix what's wrong with it, without reading logic. A local studio on top of it comes next (milestone 5).
+
+- **Extraction** (`authoring.llm.LLMExtractor`, any pydantic-ai model, `[extract]` extra): the whole document in one
+  pass, every rule linked to the sentence it came from, and the sentences that gave no rule.
+- **Problems** (`core.problems.problems`): every clash between rules and every customer no rule decides, each shown
+  as a minimal example customer. A gap is also a warning in `validate` (`Undecided`).
+- **Plain words** (`authoring.plain`): facts and outcomes through the policy's new `display` phrases ("Came by
+  courier", "{} days late", "A refund").
+- **Proposals** (`authoring.propose`): the author says what a customer should get; a model drafts the smallest change
+  to the document, the changed sentences are extracted again with the policy's own names, and Z3 checks the result
+  against every rule and every approved example customer before the author sees it.
+
+`python -m policyproof.authoring.bench --model MODEL DOC CASES [NAMES]` scores an extractor on a document against a
+hand-written policy and its eval cases. The reference documents are in `examples/authoring/`.
+
 ## Development
 
 ```bash

@@ -5,6 +5,7 @@ AWS credentials and region. Jev: set TYPESAFE_API_KEY. Each test is skipped when
 """
 import asyncio
 import os
+from pathlib import Path
 
 import boto3
 import pytest
@@ -87,3 +88,36 @@ def test_bedrock_passes_the_toy_evaluation_gate():
     cases = load(Path(__file__).parent.parent.parent / "examples" / "eval" / "toy.cases.yaml").unwrap()
     report = asyncio.run(evaluate(cases, [Configuration("haiku", r, r, r, r)], runs=1))
     assert gate(report.configurations[0]).passed, render_text(report)
+
+
+TOY_DOC = Path(__file__).parent.parent.parent / "examples" / "authoring" / "toy.md"
+
+
+@needs_bedrock
+def test_authoring_bedrock_extracts_the_toy_document():
+    from pydantic_ai.models.bedrock import BedrockConverseModel
+
+    from policyproof.authoring.document import parse
+    from policyproof.authoring.llm.extractor import LLMExtractor
+    from policyproof.core.problems import Clash, OutrightConflict, problems
+
+    ex = asyncio.run(LLMExtractor(BedrockConverseModel(os.environ["PP_BEDROCK_MODEL"])).extract(
+        parse(TOY_DOC.read_text()))).unwrap()
+    assert ex.links and not any(isinstance(f, Clash | OutrightConflict) for f in problems(compile(ex.policy)).found)
+
+
+@needs_bedrock
+def test_authoring_bedrock_drafts_an_edit_that_applies():
+    from pydantic_ai.models.bedrock import BedrockConverseModel
+
+    from policyproof.authoring.document import apply, parse
+    from policyproof.authoring.llm.drafter import LLMDrafter
+    from policyproof.authoring.ports import Choose, Situation
+
+    doc = parse("## Couriers\n\n- Courier parcels are never refunded.\n"
+                "- A late courier parcel is refunded if the customer asks.\n")
+    situation = Situation(("Came by courier", "3 days late", "Asked for a refund"),
+                          tuple(s.anchor for s in doc.sentences), (("refund", "A refund"), ("nothing", "Nothing")))
+    edits = asyncio.run(LLMDrafter(BedrockConverseModel(os.environ["PP_BEDROCK_MODEL"])).draft(
+        doc, situation, Choose("refund"), None)).unwrap()
+    assert edits and isinstance(apply(doc, edits), Success)
