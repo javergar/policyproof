@@ -2,24 +2,127 @@
 
 Prove what an agent may decide and say, from a written policy.
 
-A policy is a YAML file: enum sorts, typed variables (from a system, asked of the customer, or derived), rules as
-expression trees, and named outcomes. `policyproof` checks the policy is sound, decides cases with the Z3 solver
-(or picks the one question that settles them), and checks every claim in an agent's reply against the proof.
+An AI support agent that grants refunds, rebooks flights or approves returns is only as trustworthy as the policy
+behind it, and a language model asked to "follow the policy" will sometimes decide the wrong outcome or promise
+something the policy never allowed. `policyproof` takes those decisions away from the model. The policy is written as
+rules that the [Z3](https://github.com/Z3Prover/z3) solver can reason about, and every decision is proved from them:
 
-```python
-from policyproof.core.codec import from_yaml
-from policyproof.core.decide import decide
-from policyproof.core.facts import Fact, FromSystem, facts
-from policyproof.core.solver import compile
-from policyproof.core.syntax import IntLit
-from policyproof.core.validate import gate
+- **Decide, or ask the one question that settles it.** Given the facts you know about a customer, `policyproof`
+  either proves the outcome (and names the rules and facts that prove it) or picks the single question whose answer
+  would decide the case.
+- **Check the policy itself.** Before anything runs, it finds rules that contradict each other and customers no rule
+  decides, each shown as a concrete example customer.
+- **Guard what the agent says.** Models read the customer's messages and draft the replies, but every claim in a
+  drafted reply is checked against the proof before it is sent, and anything that can't be checked falls back to a
+  plain safe reply.
+- **Start from the document you already have.** The authoring layer turns a markdown policy into rules, and the
+  studio, a local web page, lets the person who owns the policy fix contradictions and gaps in plain English, without
+  reading logic.
 
-policy = from_yaml(open("policy.yaml").read()).unwrap()
-compiled = gate(compile(policy)).unwrap()          # fails on any validation error
-decision = decide(compiled, facts(Fact("daysLate", IntLit(3), FromSystem("tracking"))))
+The core is pure and deterministic: no LLMs, no network, no I/O. Models are optional and only ever read text.
+
+> **Status:** early (0.1, pre-release). The API may still change.
+
+## Getting started
+
+`policyproof` needs Python 3.13 or later.
+
+```bash
+uv add "policyproof @ git+https://github.com/javergar/policyproof"
+# or: pip install "policyproof @ git+https://github.com/javergar/policyproof"
 ```
 
-The core (`policyproof.core`) is pure and deterministic: no LLMs, no network, no I/O.
+### 1. Write a policy
+
+A policy is a YAML file: typed variables (known from a system, asked of the customer, or derived by the rules), rules,
+and the outcomes a case can end in. Save this as `refunds.yaml`:
+
+```yaml
+policy: late-parcels
+version: "1"
+variables:
+  daysLate: { sort: Int, role: system, description: Days the parcel arrived after the promised date. }
+  wantsRefund:
+    sort: Bool
+    role: ask
+    question: Would you like your money back?
+    description: The customer wants a refund rather than a voucher.
+  refund: { sort: Bool, role: derived, description: The customer gets a refund. }
+  voucher: { sort: Bool, role: derived, description: The customer gets a voucher. }
+rules:
+  - { id: R1, when: { and: [{ ge: [daysLate, 2] }, wantsRefund] }, then: refund }
+  - { id: R2, when: { and: [{ ge: [daysLate, 2] }, { not: wantsRefund }] }, then: voucher }
+  - { id: R3, when: { lt: [daysLate, 2] }, then: { and: [{ not: refund }, { not: voucher }] } }
+  - { id: R4, when: refund, then: { not: voucher } }
+  - { id: R5, constraint: { ge: [daysLate, 0] } }
+outcomes:
+  refund: { refund: true }
+  voucher: { voucher: true }
+  nothing: { refund: false, voucher: false }
+```
+
+[`policy.schema.json`](src/policyproof/schema/policy.schema.json) is its JSON Schema, for completion in your editor.
+
+### 2. Decide a case
+
+```python
+from pathlib import Path
+
+from policyproof.core.codec import from_yaml
+from policyproof.core.decide import decide
+from policyproof.core.facts import Answered, Fact, FromSystem, facts
+from policyproof.core.solver import compile
+from policyproof.core.syntax import BoolLit, IntLit
+from policyproof.core.validate import gate
+
+policy = from_yaml(Path("refunds.yaml").read_text()).unwrap()
+compiled = gate(compile(policy)).unwrap()   # fails if the policy has errors
+
+late = Fact("daysLate", IntLit(3), FromSystem("tracking"))
+print(decide(compiled, facts(late)))
+# NeedInfo(var='wantsRefund', question='Would you like your money back?', reason='missing',
+#          what_if=((BoolLit(value=True), 'refund'), (BoolLit(value=False), 'voucher')))
+
+yes = Fact("wantsRefund", BoolLit(True), Answered("Would you like your money back?", "yes please"))
+print(decide(compiled, facts(late, yes)))
+# Decided(outcome='refund', rules=('R1',), facts_used=(...))
+```
+
+With only the delivery date known, the case can't be decided yet, so `decide` returns the one question to ask and
+what each answer would lead to. Once the customer answers, it proves the refund and names rule R1 as the reason.
+
+### 3. Catch a contradiction
+
+Add a rule that clashes with R1, say `{ id: R6, when: { ge: [daysLate, 10] }, then: { not: refund } }`, and `gate`
+refuses the policy, showing the customer the rules can't agree on:
+
+```text
+<Failure: (NotTotal(witness={'daysLate': IntLit(value=10), 'wantsRefund': BoolLit(value=True)}), ...)>
+```
+
+A parcel 10 days late whose customer wants their money back has no possible outcome: R1 says refund, R6 says no
+refund.
+
+### 4. Try the studio
+
+The studio is where a policy author fixes problems like that one in plain English. Try it with no model and no
+account, using a sample policy and scripted stand-ins for the model (the Z3 checks are real):
+
+```bash
+git clone https://github.com/javergar/policyproof && cd policyproof
+uv sync
+uv run python scripts/studio_demo.py
+```
+
+### Where next
+
+- [Reading text](#reading-text-policyproofeffects): read customer messages and guard drafted replies with a model.
+- [Evaluating a configuration](#evaluating-a-configuration-policyproof-eval): check your readers on your policy
+  before deploying.
+- [Authoring a policy from a document](#authoring-a-policy-from-a-document-policyproofauthoring) and
+  [the studio](#the-studio-policyproof-studio): start from a markdown policy.
+- [`tests/policies/`](tests/policies) has larger reference policies (deliveries, retail refunds, flight
+  disruption), and [`examples/`](examples) has their markdown documents, eval cases and a whole agent turn.
 
 ## Reading text: `policyproof.effects`
 
