@@ -65,9 +65,14 @@ def test_bedrock_passes_a_correct_reply_and_stops_a_wrong_one(toy):
 @needs_jev
 def test_jev_reads_facts_and_an_answer(toy):
     c, r = compile(toy), jev()
-    found = asyncio.run(r.read_facts(c.policy, "It came by courier and I want my money back.")).unwrap()
-    assert {(f.var, f.value) for f in found} >= {("carrier", "COURIER")}
-    assert isinstance(asyncio.run(r.read_answer(c.policy, "wantsRefund", "Yes please, money back.")), Success)
+
+    async def both():  # one event loop: the model's HTTP client keeps connections bound to the loop that opened them
+        return (await r.read_facts(c.policy, "It came by courier and I want my money back."),
+                await r.read_answer(c.policy, "wantsRefund", "Yes please, money back."))
+
+    found, answer = asyncio.run(both())
+    assert {(f.var, f.value) for f in found.unwrap()} >= {("carrier", "COURIER")}
+    assert isinstance(answer, Success)
 
 
 @needs_bedrock
