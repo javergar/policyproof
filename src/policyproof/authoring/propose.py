@@ -55,7 +55,7 @@ class Proposal:
     new: tuple[Found, ...]  # problems after that were not problems before
     broken: tuple[Example, ...]
     additions: Additions
-    answered: bool | None  # Choose: every target's customer now gets that outcome; otherwise None
+    answered: bool | None  # every expected target's customer (each completion) now gets its outcome; else None
     attempts: int
 
 
@@ -171,7 +171,7 @@ async def _evaluate(state: Draft, before: Problems, target: Sequence[int], edits
     fixes = tuple(i for i, f in enumerate(before.found) if not _still_a_problem(c2, f))
     still_open = tuple(i for i in target if i not in fixes)
     new = tuple(f for f in after.found if not isinstance(f, GaveUp) and not _still_a_problem(c1, f))
-    answered = (all(decides(c2, _witness_of(before.found[i]), o) for i, o in expected.items())
+    answered = (all(decides(c2, _customer_of(before.found[i]), o) for i, o in expected.items())
                 if expected else None)
     return Success(Proposal(edits, Draft(doc, merged, state.examples), fixes, still_open, new,
                             broken(c2, state.examples), additions(state.extraction.policy, merged.policy),
@@ -199,7 +199,7 @@ def _what_went_wrong(state: Draft, before: Problems, p: Proposal, expected: Mapp
         c2 = compile(p.after.extraction.policy)
         lines += [f"The customer ({', '.join(customer_phrases(policy, _customer_of(before.found[i])))}) doesn't get "
                   f"{labels.get(o, o)}." for i, o in expected.items()
-                  if not decides(c2, _witness_of(before.found[i]), o)]
+                  if not decides(c2, _customer_of(before.found[i]), o)]
     return "Your last change didn't work. " + " ".join(lines)
 
 

@@ -139,3 +139,22 @@ def test_a_clash_the_solver_cant_minimise_is_reported_not_raised(monkeypatch):
     monkeypatch.setattr(problems_module, "check", flaky)
     result = problems(compile(load("defects/clashes.yaml")))
     assert GaveUp("clashes", "nonlinear") in result.found and not result.complete
+
+
+def test_a_clash_stays_while_any_customer_like_it_still_clashes():
+    """Judged on the minimal customer, not the one complete witness: a change that fixes the witness of the lost-parcel
+    clash (late and asked) still leaves lost courier parcels that weren't late clashing."""
+    from dataclasses import replace
+
+    from policyproof.core.syntax import CheckedPolicy, Cmp, Not, Var, When
+    p = load("defects/couriers.yaml")
+    found = clashes(problems(compile(p)).found)
+    late = next(f for f in found if f.rules == ("C4", "C5"))
+    lost = next(f for f in found if f.rules == ("C4", "C6"))
+    courier = Cmp("eq", Var("carrier"), COURIER)
+    late_asked = And((Cmp("gt", Var("daysLate"), IntLit(0)), Var("asked")))
+    fixed = When("C4", And((courier, Not(late_asked))), Not(Var("refund")))
+    c2 = compile(CheckedPolicy(replace(p, rules=tuple(fixed if r.id == "C4" else r for r in p.rules))))
+    assert not still_a_problem(c2, late)
+    assert still_a_problem(c2, replace(lost, witness=(("asked", T), ("carrier", COURIER), ("daysLate", IntLit(1)),
+                                                      ("lost", T))))

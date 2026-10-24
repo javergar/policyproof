@@ -237,16 +237,16 @@ def _known(c: Compiled, customer: Customer) -> list[Expr]:
 
 def still_a_problem(c: Compiled, f: Clash | Gap) -> bool:
     """Whether a problem found on some version of a policy is still a problem on `c`, judged over every completion of
-    its witness: a fix may add a question the old witness doesn't answer.
+    its minimal customer: the author was shown that customer, not one complete witness, and a fix may add a question
+    no earlier fact answers.
 
-    A clash stays when the rules still can't hold for any completion; a gap stays when some completion is still
+    A clash stays when the rules still can't hold for some completion; a gap stays when some completion is still
     undecided. When the solver gives up, the problem is kept."""
     match f:
-        case Clash(witness=witness):
-            known = {v.name for v in c.policy.variables}
-            return _unsat(c, [r.id for r in c.policy.rules], tuple((v, x) for v, x in witness if v in known))
-        case Gap(witness=witness):
-            return not isinstance(undecided(c, _inputs(c), given=_known(c, witness)), Unsat)
+        case Clash(customer=customer):
+            return not isinstance(totality(c, _inputs(c), given=_known(c, customer)), Unsat)
+        case Gap(customer=customer):
+            return not isinstance(undecided(c, _inputs(c), given=_known(c, customer)), Unsat)
         case _:
             assert_never(f)
 
