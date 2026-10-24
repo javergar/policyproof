@@ -92,9 +92,9 @@ def doc_view(file: str, now: Document, baseline: Document, ex: Extraction, ws: W
             return "changed"
         if a in t.inserted:
             return "inserted"
-        if a in uncovered:
-            return "uncovered"
-        return "background" if a in background else "plain"
+        if a in background:
+            return "background"
+        return "uncovered" if a in uncovered else "plain"
 
     for s in now.sentences:
         a = s.anchor
