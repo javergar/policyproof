@@ -127,3 +127,15 @@ def test_decides_judges_every_completion():
     assert isinstance(gap, Gap)
     assert not decides(insured_fix(), gap.witness, "refund")  # it depends on the new question now
     assert decides(compile(load("defects/gap.yaml")), (("late", T),), "refund")
+
+
+def test_a_clash_the_solver_cant_minimise_is_reported_not_raised(monkeypatch):
+    """Upgraded minor: with nonlinear arithmetic the ground checks can come back Unknown; never crash."""
+    real = problems_module.check
+
+    def flaky(c, assertions, *, rules=True):
+        return Unknown("nonlinear") if not rules else real(c, assertions, rules=rules)
+
+    monkeypatch.setattr(problems_module, "check", flaky)
+    result = problems(compile(load("defects/clashes.yaml")))
+    assert GaveUp("clashes", "nonlinear") in result.found and not result.complete

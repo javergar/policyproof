@@ -111,3 +111,10 @@ def test_gap_is_a_warning():
     assert Undecided({"late": BoolLit(False)}) in found
     assert severity(Undecided({"late": BoolLit(False)})) == "warning"
     assert is_successful(gate(compile(load("defects/gap.yaml"))))
+
+
+def test_giving_up_on_gaps_is_only_a_warning():
+    """Upgraded minor: the gap check is new, so a policy Z3 gives up on for it must still pass `gate` as before."""
+    from policyproof.core.validate import SolverGaveUp
+    assert severity(SolverGaveUp("undecided", "timeout")) == "warning"
+    assert severity(SolverGaveUp("totality", "timeout")) == "error"

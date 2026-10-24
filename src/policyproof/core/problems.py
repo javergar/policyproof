@@ -99,11 +99,13 @@ def _unsat(c: Compiled, rules: Sequence[str], customer: Customer) -> bool:
     return isinstance(check(c, [*_rule_assertions(c, rules), *(fact(v, x) for v, x in customer)], rules=False), Unsat)
 
 
-def _minimal_rules(c: Compiled, witness: Customer) -> tuple[str, ...]:
-    """A minimal set of rules that can't hold together with the witness (deletion from the unsat core)."""
+def _minimal_rules(c: Compiled, witness: Customer) -> tuple[str, ...] | Unknown:
+    """A minimal set of rules that can't hold together with the witness (deletion from the unsat core), or Unknown
+    when the solver can't settle the witness's ground check (nonlinear arithmetic, a timeout)."""
     result = check(c, [*_rule_assertions(c, [r.id for r in c.policy.rules]), *(fact(v, x) for v, x in witness)],
                    rules=False)
-    assert isinstance(result, Unsat), "the witness of a clash must clash"
+    if not isinstance(result, Unsat):
+        return result if isinstance(result, Unknown) else Unknown("the clash's witness turned out consistent")
     kept = [label.id for label in result.core if isinstance(label, RuleLabel)]
     for rid in _ordered(c, set(kept)):
         trial = [r for r in kept if r != rid]
@@ -163,6 +165,8 @@ def _clashes(c: Compiled, cap: int) -> tuple[list[Found], bool]:
             case Sat(model):
                 witness = tuple(sorted(model.items()))
                 rules = _minimal_rules(c, witness)
+                if isinstance(rules, Unknown):
+                    return [*found, GaveUp("clashes", rules.reason)], False
                 customer = _minimal_customer(c, rules, witness)
                 found.append(Clash(customer, witness, rules, tuple(_says(c, r, customer) for r in rules)))
                 seen.append(frozenset(rules))

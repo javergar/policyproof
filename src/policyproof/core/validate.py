@@ -134,6 +134,9 @@ SEVERITY_ORDER: dict[Severity, int] = {"error": 0, "warning": 1, "review": 2}
 
 def severity(f: Finding) -> Severity:
     match f:
+        case SolverGaveUp(check="undecided"):
+            # the gap check is newer than `gate`'s users: giving up on it mustn't fail a policy that passed before
+            return "warning"
         case Conflict() | NotTotal() | ImpossibleInput() | UnreachableOutcome() | SolverGaveUp():
             return "error"
         case Undecided() | UnusedVariable() | NearDuplicate() | DisjointGroups():
