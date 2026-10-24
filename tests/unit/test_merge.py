@@ -5,7 +5,7 @@ from conftest import load
 from returns.result import Failure
 
 from policyproof.authoring.document import Anchor
-from policyproof.authoring.merge import Additions, RuleChange, additions, merge, rename, rule_changes
+from policyproof.authoring.merge import Additions, Changed, RuleChange, additions, merge, rename, rule_changes
 from policyproof.authoring.ports import Extraction, Link
 from policyproof.core.syntax import (
     And,
@@ -99,3 +99,30 @@ def test_rule_changes():
     assert [(rc.anchor, len(rc.before), len(rc.after)) for rc in rule_changes(old, new)] == [(S5, 1, 1), (S8, 1, 0)]
     assert rule_changes(old, old) == ()
     assert isinstance(rule_changes(old, new)[0], RuleChange)
+
+
+def test_merge_keeps_the_reviewed_metadata_of_existing_names():
+    """I2: a partial extraction re-states the vocabulary; the policy keeps what the author already has."""
+    p = base().policy
+    reworded = tuple(replace(v, description="Paraphrased by a model.") if v.name == "lost" else v for v in p.variables)
+    merged = merge(base(), Extraction(CheckedPolicy(replace(p, variables=reworded, rules=())), (), ()), []).unwrap()
+    assert next(v for v in merged.policy.variables if v.name == "lost").description == "The parcel was lost."
+
+
+def test_merge_refuses_to_change_a_names_role_or_sort():
+    p = base().policy
+    flipped = tuple(replace(v, role=System()) if v.name == "asked" else v for v in p.variables)
+    result = merge(base(), Extraction(CheckedPolicy(replace(p, variables=flipped, rules=())), (), ()), [])
+    assert isinstance(result, Failure)
+    assert any(isinstance(e, Changed) and e.name == "asked" for e in result.failure())
+
+
+def test_merge_adds_new_values_to_existing_sorts():
+    p = base().policy
+    sorts = tuple(replace(s, values=(*s.values, "DRONE")) if s.name == "Carrier" else s for s in p.sorts)
+    variables = tuple(replace(v, sort=next(s for s in sorts if s.name == "Carrier")) if v.name == "carrier" else v
+                      for v in p.variables)
+    merged = merge(base(), Extraction(CheckedPolicy(replace(p, sorts=sorts, variables=variables, rules=())), (), ()),
+                   []).unwrap()
+    assert "DRONE" in next(s for s in merged.policy.sorts if s.name == "Carrier").values
+    assert additions(base().policy, merged.policy).values == (("Carrier", "DRONE"),)

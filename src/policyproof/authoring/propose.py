@@ -15,7 +15,7 @@ from returns.result import Failure, Result, Success
 from policyproof.authoring.document import Document, Edit, apply, gone, touched
 from policyproof.authoring.examples import Example, broken
 from policyproof.authoring.extraction import Extraction
-from policyproof.authoring.merge import Additions, additions, merge
+from policyproof.authoring.merge import Additions, Changed, additions, merge
 from policyproof.authoring.plain import customer_phrases, outcome_label
 from policyproof.authoring.ports import Answer, Choose, Describe, Drafter, Extractor, Situation
 from policyproof.core._result import unreachable
@@ -126,7 +126,7 @@ def _situation(state: Draft, before: Problems, target: Sequence[int]) -> Situati
     return Situation(customer, sentences, tuple((o.name, outcome_label(o)) for o in p.outcomes))
 
 
-def _sort_errors(errors: tuple[SortError, ...]) -> str:
+def _sort_errors(errors: tuple[SortError | Changed, ...]) -> str:
     return "; ".join(str(e) for e in errors)
 
 

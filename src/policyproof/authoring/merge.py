@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import assert_never
 
-from returns.result import Result
+from returns.result import Failure, Result
 
 from policyproof.authoring.document import Anchor
 from policyproof.authoring.extraction import Extraction, Link
@@ -20,6 +20,7 @@ from policyproof.core.syntax import (
     Constraint,
     Define,
     EnumLit,
+    EnumSort,
     Expr,
     Iff,
     Implies,
@@ -35,7 +36,7 @@ from policyproof.core.syntax import (
     Variable,
     When,
 )
-from policyproof.core.typecheck import SortError, check_policy
+from policyproof.core.typecheck import SortError, check_policy, sort_name
 
 RULE_NUMBER = re.compile(r"(\d+)\Z")
 
@@ -54,11 +55,52 @@ class RuleChange:
     after: tuple[Rule, ...]
 
 
-def _by_name[T](base: Sequence[T], part: Sequence[T], name: str) -> tuple[T, ...]:
-    """`base` in its order with `part`'s version of each name, then `part`'s new names."""
-    newer = {getattr(x, name): x for x in part}
-    known = {getattr(x, name) for x in base}
-    return (*(newer.get(getattr(x, name), x) for x in base), *(x for x in part if getattr(x, name) not in known))
+@dataclass(frozen=True, slots=True)
+class Changed:
+    """A partial extraction changed what an existing name means (its sort, its role, an outcome's assignment).
+    The policy keeps the author's version; a change like this has to be shown to them, not merged silently."""
+
+    name: str
+    message: str
+
+
+def _sorts(base: Sequence[EnumSort], part: Sequence[EnumSort]) -> tuple[EnumSort, ...]:
+    """`base`'s sorts with any values `part` adds, then `part`'s new sorts."""
+    newer = {x.name: x for x in part}
+    kept = tuple(replace(x, values=(*x.values, *(v for v in newer[x.name].values if v not in x.values)))
+                 if x.name in newer else x for x in base)
+    known = {x.name for x in base}
+    return (*kept, *(x for x in part if x.name not in known))
+
+
+def _variables(base: Sequence[Variable], part: Sequence[Variable], sorts: Mapping[str, EnumSort],
+               changed: list[Changed]) -> tuple[Variable, ...]:
+    """`base`'s variables as the author has them (their sorts updated with new values), then `part`'s new ones."""
+    newer = {v.name: v for v in part}
+    out: list[Variable] = []
+    for v in base:
+        other = newer.get(v.name)
+        if other is not None and sort_name(other.sort) != sort_name(v.sort):
+            changed.append(Changed(v.name, f"its sort would change from {sort_name(v.sort)} to "
+                                           f"{sort_name(other.sort)}"))
+        if other is not None and type(other.role) is not type(v.role):
+            changed.append(Changed(v.name, f"its role would change from {type(v.role).__name__.lower()} to "
+                                           f"{type(other.role).__name__.lower()}"))
+        out.append(replace(v, sort=sorts[v.sort.name]) if isinstance(v.sort, EnumSort) else v)
+    known = {v.name for v in base}
+    out += [replace(v, sort=sorts[v.sort.name]) if isinstance(v.sort, EnumSort) else v
+            for v in part if v.name not in known]
+    return tuple(out)
+
+
+def _outcomes(base: Sequence[Outcome], part: Sequence[Outcome], changed: list[Changed]) -> tuple[Outcome, ...]:
+    newer = {o.name: o for o in part}
+    for o in base:
+        other = newer.get(o.name)
+        if other is not None and dict(other.assignment) != dict(o.assignment):
+            changed.append(Changed(o.name, "the outcome's assignment would change"))
+    known = {o.name for o in base}
+    return (*base, *(o for o in part if o.name not in known))
 
 
 def _fresh_ids(taken: Sequence[str], count: int) -> list[str]:
@@ -67,9 +109,12 @@ def _fresh_ids(taken: Sequence[str], count: int) -> list[str]:
     return [f"R{start + i}" for i in range(count)]
 
 
-def merge(base: Extraction, part: Extraction, replaced: Sequence[Anchor]) -> Result[Extraction, tuple[SortError, ...]]:
-    """Drop the rules linked only to `replaced` sentences, add `part`'s rules under fresh ids, and take `part`'s
-    sorts, variables and outcomes where they extend or update `base`'s. The result is typechecked."""
+def merge(base: Extraction, part: Extraction,
+          replaced: Sequence[Anchor]) -> Result[Extraction, tuple[SortError | Changed, ...]]:
+    """Drop the rules linked only to `replaced` sentences and add `part`'s rules under fresh ids. Names the policy
+    already has keep the author's version (description, question, display); `part` may only add names and enum
+    values. A change to an existing name's sort or role, or to an outcome, is a `Changed` error. The result is
+    typechecked."""
     gone = set(replaced)
     kept_links = tuple(link for link in base.links if link.anchor not in gone)
     linked = {link.rule for link in kept_links}
@@ -84,8 +129,13 @@ def merge(base: Extraction, part: Extraction, replaced: Sequence[Anchor]) -> Res
     candidates = (*base.uncovered, *part.uncovered)
     uncovered = tuple(dict.fromkeys(a for a in candidates if a not in gone and a not in covered))
     p, q = base.policy, part.policy
-    policy = Policy(p.name, p.version, _by_name(p.sorts, q.sorts, "name"), _by_name(p.variables, q.variables, "name"),
-                    kept_rules + new_rules, _by_name(p.outcomes, q.outcomes, "name"))
+    sorts = _sorts(p.sorts, q.sorts)
+    changed: list[Changed] = []
+    variables = _variables(p.variables, q.variables, {x.name: x for x in sorts}, changed)
+    outcomes = _outcomes(p.outcomes, q.outcomes, changed)
+    if changed:
+        return Failure(tuple(changed))
+    policy = Policy(p.name, p.version, sorts, variables, kept_rules + new_rules, outcomes)
     return check_policy(policy).map(lambda checked: Extraction(checked, links, uncovered))
 
 
