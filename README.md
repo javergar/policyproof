@@ -2,6 +2,16 @@
 
 Prove what an agent may decide and say, from a written policy.
 
+![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-3776ab)
+![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Status: pre-release](https://img.shields.io/badge/status-pre--release-orange)
+
+![The policyproof studio: a refunds policy on the left, and on the right two example customers on whom its rules
+disagree, each with what every rule says and the question "What should this customer get?"](docs/images/studio-problem.png)
+
+<sub>The studio finds where a refunds policy contradicts itself and asks its author about one example customer at a
+time, in plain words.</sub>
+
 An AI support agent that grants refunds, rebooks flights or approves returns is only as trustworthy as the policy
 behind it, and a language model asked to "follow the policy" will sometimes decide the wrong outcome or promise
 something the policy never allowed. `policyproof` takes those decisions away from the model. The policy is written as
@@ -22,6 +32,23 @@ rules that the [Z3](https://github.com/Z3Prover/z3) solver can reason about, and
 The core is pure and deterministic: no LLMs, no network, no I/O. Models are optional and only ever read text.
 
 > **Status:** early (0.1, pre-release). The API may still change.
+
+## How it works
+
+```mermaid
+flowchart LR
+    doc["Policy document<br/>(markdown)"] -- "extract, fix in the studio" --> policy["Policy<br/>(rules in YAML)"]
+    policy -- "checked by Z3:<br/>no clashes, no gaps" --> core(("decide"))
+    msg["Customer message"] -- "a model reads<br/>facts and answers" --> core
+    sys["Your systems<br/>(orders, tracking)"] -- facts --> core
+    core -- "outcome and the rules behind it,<br/>or the one question to ask" --> agent["Your agent"]
+    agent -- "drafted reply" --> guard{"guard_reply"}
+    guard -- "every claim proved" --> out["Reply sent"]
+    guard -- "a claim fails" --> safe["Rewrite once,<br/>else a safe fallback"]
+```
+
+Models only ever read text: what the customer said, and what a drafted reply claims. Every decision comes from the
+rules, and every claim is checked against them.
 
 ## Getting started
 
@@ -105,8 +132,9 @@ refund.
 
 ### 4. Try the studio
 
-The studio is where a policy author fixes problems like that one in plain English. Try it with no model and no
-account, using a sample policy and scripted stand-ins for the model (the Z3 checks are real):
+The studio is where a policy author fixes problems like that one in plain English ([see it step by
+step](#fix-a-policy-in-the-studio)). Try it with no model and no account, using a sample policy and scripted
+stand-ins for the model (the Z3 checks are real):
 
 ```bash
 git clone https://github.com/javergar/policyproof && cd policyproof
@@ -121,8 +149,110 @@ uv run python scripts/studio_demo.py
   before deploying.
 - [Authoring a policy from a document](#authoring-a-policy-from-a-document-policyproofauthoring) and
   [the studio](#the-studio-policyproof-studio): start from a markdown policy.
+- [Examples](#examples): the studio step by step, guarding an agent, testing readers, and a media plan.
 - [`tests/policies/`](tests/policies) has larger reference policies (deliveries, retail refunds, flight
   disruption), and [`examples/`](examples) has their markdown documents, eval cases and a whole agent turn.
+
+## Examples
+
+| You want to... | Look at |
+|---|---|
+| Decide cases and ask the right question | [Getting started](#getting-started) |
+| Turn a policy document into rules and fix it, without reading logic | [Fix a policy in the studio](#fix-a-policy-in-the-studio) |
+| Stop a support agent promising what the policy doesn't allow | [Guard a support agent](#guard-a-support-agent) |
+| Check a model on your policy before deploying | [Test your readers before you deploy](#test-your-readers-before-you-deploy) |
+| Use it outside customer service | [Plan a media budget within the guidelines](#plan-a-media-budget-within-the-guidelines) |
+
+### Fix a policy in the studio
+
+The studio is for the person who owns the policy: an operations, service or legal author who has never read a
+formula. Open it on a markdown document (`policyproof studio refunds.md --model ...`), or try the demo, which needs no
+model: `uv run python scripts/studio_demo.py`.
+
+**1. It finds the problem and shows it as a customer.** "Courier parcels are never refunded" clashes with two other
+rules. Rather than showing the logic, the studio shows the customers they disagree on, what each rule says for them
+(quoted from the document), and one question: what should this customer get? (The screenshot at the top of this page.)
+
+**2. You answer, and it proposes the smallest change to the document.** Here both customers should get a refund, so
+the studio rewrites one sentence, re-reads it, and checks the result with Z3 against every rule and every customer
+you've approved before you see it:
+
+![The proposed change: "Courier parcels are never refunded" becomes "Courier parcels are never refunded, unless they
+arrive late and the customer asks, or they are lost", with checks that it fixes both customers and conflicts with
+nothing](docs/images/studio-proposal.png)
+
+**3. Accept, and move on.** The change is written to the document straight away (and can be undone), the two
+customers are kept as approved examples that every later change is checked against, and the next thing to look at
+comes up:
+
+![After accepting: the document shows the changed sentence in green, a note says both problems are fixed, and the
+next item asks whether a sentence nothing was taken from is a rule or background information](docs/images/studio-fixed.png)
+
+More in [the studio](#the-studio-policyproof-studio).
+
+### Guard a support agent
+
+Your agent drafts replies as usual. `read_turn` reads the customer's message into facts (an answer is only accepted
+if it quotes the message), the policy decides, and `guard_reply` checks every claim in the draft against the proof
+before anything is sent:
+
+```python
+known = facts(Fact("daysLate", IntLit(3), FromSystem("tracking")))
+asked = decide(compiled, known)            # NeedInfo: "Would you like your money back?"
+
+turn = (await read_turn(compiled, Conversation(known, asked, frozenset()),
+                        "Yes please, I'd like my money back.", Readers(llm, llm))).unwrap()
+turn.decision                              # Decided(outcome="refund", ...)
+
+draft = "Sorry about the delay! Since it was 3 days late, you'll get a voucher."
+sent = await guard_reply(compiled, turn.state.facts, turn.decision, draft, llm, llm)
+# the voucher claim contradicts the proven refund: the reply is rewritten once and checked
+# again, and if it still fails a plain fallback is sent instead
+```
+
+[`examples/turn.py`](examples/turn.py) runs this turn end to end on a Bedrock model. Details in
+[Reading text](#reading-text-policyproofeffects).
+
+### Test your readers before you deploy
+
+Write cases next to your policy, the way you'd write tests, and check each reader configuration (model, prompts,
+Jev) on them. A wrong decision fails the gate; asking again is allowed, within a limit. This calls the models
+named in `readers.yaml`:
+
+```bash
+policyproof eval examples/eval/toy.cases.yaml --readers examples/eval/readers.yaml --runs 3
+```
+
+Details in [Evaluating a configuration](#evaluating-a-configuration-policyproof-eval).
+
+### Plan a media budget within the guidelines
+
+The same machinery works wherever decisions must follow written rules. In
+[`examples/marketing_mix/`](examples/marketing_mix) the marketing guidelines (budget caps, TV only with legal
+sign-off, launch support, no conversion ads for SKUs about to sell out) are a policy. Z3 finds the most profitable split of a
+$1M budget under them, using funnel performance per SKU and channel, and `decide` proves the plan follows them.
+Run it with `uv run python examples/marketing_mix/plan.py` (no model needed):
+
+```text
+1. The best plan the guidelines allow (predicted margin $288.4k):
+
+                              TV        Social        Search  Retail media       Total
+  TrailRunner Pro          $0.0k       $100.0k       $100.0k       $100.0k     $300.0k
+  AeroLite                 $0.0k       $150.0k       $100.0k       $100.0k     $350.0k
+  Classic Canvas           $0.0k         $0.0k         $0.0k         $0.0k       $0.0k
+  Share of budget             0%           25%           20%           20%         65%
+
+  Approved: proved from G1, G2, G3, G4, G5, G6, G7.
+
+2. With legal sign-off, TV opens up: predicted margin $443.6k ($155.2k more):
+  ...
+  Can't approve yet. Ask: Has legal signed off the TV creative? (yes: Approved; no: Needs revising)
+
+3. Last quarter's plan, checked against the guidelines (with legal sign-off):
+  ...
+  Breaks G2: No single channel gets more than 40% of the budget.
+  Breaks G7: A SKU with fewer than 2 weeks of stock gets no lower-funnel spend.
+```
 
 ## Reading text: `policyproof.effects`
 
