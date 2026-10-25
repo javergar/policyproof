@@ -1,0 +1,32 @@
+{
+  "_about": "Made-up numbers standing in for the planning tools: SKU data (margin, stock, launches), channels with their funnel stage, and funnel performance fitted per SKU and channel. Money is in thousands of dollars.",
+  "budget": 1000,
+  "legalSignedOff": null,
+  "skus": [
+    {"key": "trail", "name": "TrailRunner Pro", "margin": 0.45, "stockWeeks": 10, "launching": false},
+    {"key": "aero", "name": "AeroLite", "margin": 0.5, "stockWeeks": 8, "launching": true},
+    {"key": "classic", "name": "Classic Canvas", "margin": 0.3, "stockWeeks": 1.5, "launching": false}
+  ],
+  "channels": [
+    {"key": "Tv", "name": "TV", "funnel": "upper"},
+    {"key": "Social", "name": "Social", "funnel": "upper"},
+    {"key": "Search", "name": "Search", "funnel": "lower"},
+    {"key": "Retail", "name": "Retail media", "funnel": "lower"}
+  ],
+  "performance": {
+    "_about": "Revenue per dollar for the first block of spend; each further block earns `saturation` times the one before.",
+    "block": 50,
+    "blocks": 6,
+    "revenuePerDollar": {
+      "trail": {"Tv": 2.9, "Social": 3.1, "Search": 4.8, "Retail": 4.0},
+      "aero": {"Tv": 3.6, "Social": 3.4, "Search": 4.2, "Retail": 3.5},
+      "classic": {"Tv": 2.4, "Social": 2.6, "Search": 5.5, "Retail": 4.6}
+    },
+    "saturation": {"Tv": 0.9, "Social": 0.7, "Search": 0.6, "Retail": 0.65}
+  },
+  "lastQuarter": {
+    "trailTv": 0, "trailSocial": 120, "trailSearch": 250, "trailRetail": 100,
+    "aeroTv": 150, "aeroSocial": 60, "aeroSearch": 80, "aeroRetail": 40,
+    "classicTv": 0, "classicSocial": 0, "classicSearch": 90, "classicRetail": 0
+  }
+}

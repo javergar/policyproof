@@ -1,0 +1,154 @@
+# The guidelines in guidelines.md as a policy. A plan (the spend per SKU and channel) is checked against it: it is
+# approved when every guideline holds. The same rules constrain the optimizer in plan.py, so they exist once.
+policy: media-plan
+version: "1"
+
+variables:
+  # From the planning tools: the budget, each SKU's stock and launch status. Spend is in thousands of dollars.
+  budget: { sort: Real, role: system, description: The quarter's approved media budget. }
+  trailStockWeeks: { sort: Real, role: system, description: Weeks of stock left for TrailRunner Pro. }
+  aeroStockWeeks: { sort: Real, role: system, description: Weeks of stock left for AeroLite. }
+  classicStockWeeks: { sort: Real, role: system, description: Weeks of stock left for Classic Canvas. }
+  trailLaunching: { sort: Bool, role: system, description: TrailRunner Pro launches this quarter. }
+  aeroLaunching: { sort: Bool, role: system, description: AeroLite launches this quarter. }
+  classicLaunching: { sort: Bool, role: system, description: Classic Canvas launches this quarter. }
+  legalSignedOff:
+    sort: Bool
+    role: ask
+    question: "Has legal signed off the TV creative?"
+    description: Legal approved the TV creative.
+
+  # The plan: spend per SKU and channel.
+  trailTv: { sort: Real, role: system, description: TV spend on TrailRunner Pro. }
+  trailSocial: { sort: Real, role: system, description: Social spend on TrailRunner Pro. }
+  trailSearch: { sort: Real, role: system, description: Search spend on TrailRunner Pro. }
+  trailRetail: { sort: Real, role: system, description: Retail media spend on TrailRunner Pro. }
+  aeroTv: { sort: Real, role: system, description: TV spend on AeroLite. }
+  aeroSocial: { sort: Real, role: system, description: Social spend on AeroLite. }
+  aeroSearch: { sort: Real, role: system, description: Search spend on AeroLite. }
+  aeroRetail: { sort: Real, role: system, description: Retail media spend on AeroLite. }
+  classicTv: { sort: Real, role: system, description: TV spend on Classic Canvas. }
+  classicSocial: { sort: Real, role: system, description: Social spend on Classic Canvas. }
+  classicSearch: { sort: Real, role: system, description: Search spend on Classic Canvas. }
+  classicRetail: { sort: Real, role: system, description: Retail media spend on Classic Canvas. }
+
+  # Totals.
+  tv: { sort: Real, role: derived, description: TV spend over all SKUs. }
+  social: { sort: Real, role: derived, description: Social spend over all SKUs. }
+  search: { sort: Real, role: derived, description: Search spend over all SKUs. }
+  retail: { sort: Real, role: derived, description: Retail media spend over all SKUs. }
+  total: { sort: Real, role: derived, description: The plan's total spend. }
+  trailTotal: { sort: Real, role: derived, description: Total spend on TrailRunner Pro. }
+  aeroTotal: { sort: Real, role: derived, description: Total spend on AeroLite. }
+  classicTotal: { sort: Real, role: derived, description: Total spend on Classic Canvas. }
+
+  # One per guideline: does the plan follow it?
+  withinBudget: { sort: Bool, role: derived, description: G1 holds. }
+  channelsCapped: { sort: Bool, role: derived, description: G2 holds. }
+  tvInBlocks: { sort: Bool, role: derived, description: G3 holds. }
+  tvCleared: { sort: Bool, role: derived, description: G4 holds. }
+  brandPresence: { sort: Bool, role: derived, description: G5 holds. }
+  launchesSupported: { sort: Bool, role: derived, description: G6 holds. }
+  lowStockHeld: { sort: Bool, role: derived, description: G7 holds. }
+  approved: { sort: Bool, role: derived, description: The plan follows every guideline. }
+
+rules:
+  - { id: T1, define: { var: tv, as: { add: [trailTv, aeroTv, classicTv] } } }
+  - { id: T2, define: { var: social, as: { add: [trailSocial, aeroSocial, classicSocial] } } }
+  - { id: T3, define: { var: search, as: { add: [trailSearch, aeroSearch, classicSearch] } } }
+  - { id: T4, define: { var: retail, as: { add: [trailRetail, aeroRetail, classicRetail] } } }
+  - { id: T5, define: { var: total, as: { add: [tv, social, search, retail] } } }
+  - { id: T6, define: { var: trailTotal, as: { add: [trailTv, trailSocial, trailSearch, trailRetail] } } }
+  - { id: T7, define: { var: aeroTotal, as: { add: [aeroTv, aeroSocial, aeroSearch, aeroRetail] } } }
+  - { id: T8, define: { var: classicTotal, as: { add: [classicTv, classicSocial, classicSearch, classicRetail] } } }
+
+  - id: G1
+    source: G1
+    explain: Total spend stays within the quarter's approved budget.
+    define: { var: withinBudget, as: { le: [total, budget] } }
+  - id: G2
+    source: G2
+    explain: No single channel gets more than 40% of the budget.
+    define:
+      var: channelsCapped
+      as:
+        and:
+          - le: [tv, { mul: [{ real: "0.4" }, budget] }]
+          - le: [social, { mul: [{ real: "0.4" }, budget] }]
+          - le: [search, { mul: [{ real: "0.4" }, budget] }]
+          - le: [retail, { mul: [{ real: "0.4" }, budget] }]
+  - id: G3
+    source: G3
+    explain: Either no TV at all, or at least 15% of the budget.
+    define: { var: tvInBlocks, as: { or: [{ eq: [tv, { real: "0" }] }, { ge: [tv, { mul: [{ real: "0.15" }, budget] }] }] } }
+  - id: G4
+    source: G4
+    explain: Any TV spend needs legal sign-off on the TV creative.
+    define: { var: tvCleared, as: { or: [{ eq: [tv, { real: "0" }] }, legalSignedOff] } }
+  - id: G5
+    source: G5
+    explain: At least 25% of the budget goes to the upper funnel.
+    define: { var: brandPresence, as: { ge: [{ add: [tv, social] }, { mul: [{ real: "0.25" }, budget] }] } }
+  - id: G6
+    source: G6
+    explain: A launching SKU gets at least 20% of the budget, and at least 40% of its own spend in the upper funnel.
+    define:
+      var: launchesSupported
+      as:
+        and:
+          - implies:
+              - trailLaunching
+              - and:
+                  - ge: [trailTotal, { mul: [{ real: "0.2" }, budget] }]
+                  - ge: [{ add: [trailTv, trailSocial] }, { mul: [{ real: "0.4" }, trailTotal] }]
+          - implies:
+              - aeroLaunching
+              - and:
+                  - ge: [aeroTotal, { mul: [{ real: "0.2" }, budget] }]
+                  - ge: [{ add: [aeroTv, aeroSocial] }, { mul: [{ real: "0.4" }, aeroTotal] }]
+          - implies:
+              - classicLaunching
+              - and:
+                  - ge: [classicTotal, { mul: [{ real: "0.2" }, budget] }]
+                  - ge: [{ add: [classicTv, classicSocial] }, { mul: [{ real: "0.4" }, classicTotal] }]
+  - id: G7
+    source: G7
+    explain: A SKU with fewer than 2 weeks of stock gets no lower-funnel spend.
+    define:
+      var: lowStockHeld
+      as:
+        and:
+          - implies: [{ lt: [trailStockWeeks, { real: "2" }] }, { eq: [{ add: [trailSearch, trailRetail] }, { real: "0" }] }]
+          - implies: [{ lt: [aeroStockWeeks, { real: "2" }] }, { eq: [{ add: [aeroSearch, aeroRetail] }, { real: "0" }] }]
+          - implies: [{ lt: [classicStockWeeks, { real: "2" }] }, { eq: [{ add: [classicSearch, classicRetail] }, { real: "0" }] }]
+
+  - id: A1
+    explain: A plan is approved exactly when it follows every guideline.
+    define:
+      var: approved
+      as: { and: [withinBudget, channelsCapped, tvInBlocks, tvCleared, brandPresence, launchesSupported, lowStockHeld] }
+
+  - id: C1
+    explain: Spend, budget and stock are never negative.
+    constraint:
+      and:
+        - gt: [budget, { real: "0" }]
+        - ge: [trailStockWeeks, { real: "0" }]
+        - ge: [aeroStockWeeks, { real: "0" }]
+        - ge: [classicStockWeeks, { real: "0" }]
+        - ge: [trailTv, { real: "0" }]
+        - ge: [trailSocial, { real: "0" }]
+        - ge: [trailSearch, { real: "0" }]
+        - ge: [trailRetail, { real: "0" }]
+        - ge: [aeroTv, { real: "0" }]
+        - ge: [aeroSocial, { real: "0" }]
+        - ge: [aeroSearch, { real: "0" }]
+        - ge: [aeroRetail, { real: "0" }]
+        - ge: [classicTv, { real: "0" }]
+        - ge: [classicSocial, { real: "0" }]
+        - ge: [classicSearch, { real: "0" }]
+        - ge: [classicRetail, { real: "0" }]
+
+outcomes:
+  go: { approved: true, display: "Approved" }
+  revise: { approved: false, display: "Needs revising" }
