@@ -109,8 +109,9 @@ class OverlappingOutcomes:
 
 @dataclass(frozen=True, slots=True)
 class InputsRelated:
-    """A rule that only relates inputs (system facts and answers): answers that break it can't be decided, so the
-    case ends in a contradiction at run time instead of an outcome."""
+    """A rule that only relates inputs (system facts and answers). `decide` uses it to infer an input it hasn't been
+    told instead of asking (e.g. a final sale from a clearance answer), and answers that break it end in a
+    contradiction at run time instead of an outcome."""
 
     rule: str
 

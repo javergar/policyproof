@@ -237,8 +237,9 @@ it refined the spec in these places:
   else is left.
 - **Every solver call has a timeout** (`compile(p, timeout_ms=10_000)`). A check the solver gives up on is reported
   as `SolverGaveUp` in validation, and never counts as a pass.
-- **Validation reports `InputsRelated(rule)` for review.** It flags rules that only relate inputs, because answers
-  that break such a rule end in a contradiction at run time.
+- **Validation reports `InputsRelated(rule)` for review.** It flags rules that only relate inputs, because `decide`
+  uses such a rule to infer an input it hasn't been told instead of asking, and answers that break it end in a
+  contradiction at run time.
 - **The answer check fails closed.** The built-in `grounded` rule fails a claim whose quote isn't in the reply. A claim
   that isn't a Boolean statement over the policy's names is `ill_typed`, and is also a problem.
 - **The decoder catches more YAML mistakes:**
