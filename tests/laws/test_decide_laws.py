@@ -22,7 +22,8 @@ def firm(world: dict, names) -> list[Fact]:
 
 @given(WORLDS, st.sets(st.sampled_from(sorted(VALUES))), st.sets(st.sampled_from(sorted(VALUES))))
 def test_l8_a_decision_survives_more_facts(world, f_names, more):
-    """The toy's outcomes are mutually exclusive (no OverlappingOutcomes finding), which this law needs."""
+    """Holds for overlapping outcomes too: a later outcome is never decided while more facts could prove an earlier
+    one (the retail and flight policies overlap; tests/unit/test_decide.py covers that case)."""
     before = decide(TOY, facts(*firm(world, f_names)))
     after = decide(TOY, facts(*firm(world, f_names | more)))
     if isinstance(before, Decided) and not isinstance(after, Contradiction):

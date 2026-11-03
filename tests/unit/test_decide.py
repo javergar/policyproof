@@ -115,6 +115,58 @@ def test_an_int_question_has_no_what_if_table_but_is_still_asked():
         [Fact("bags", IntLit(2), Answered("How many bags?", "two")), Fact("n", IntLit(5), OPS)], key=repr)))
 
 
+OVERLAP = """policy: overlap
+version: "1"
+variables:
+  late: { sort: Bool, role: system }
+  wantsRefund: { sort: Bool, role: ask, question: "Would you like your money back?" }
+  refund: { sort: Bool, role: derived }
+  credit: { sort: Bool, role: derived }
+rules:
+  - { id: O1, define: { var: refund, as: { and: [late, wantsRefund] } } }
+  - { id: O2, define: { var: credit, as: late } }
+outcomes:
+  full_refund: { refund: true }
+  store_credit: { credit: true }
+  nothing: { refund: false, credit: false }
+"""
+
+
+def test_a_later_outcome_waits_until_the_earlier_ones_are_ruled_out():
+    """store_credit is proven by late alone, but full_refund comes first and might still hold."""
+    from policyproof.core.codec import from_yaml
+    c = compile(from_yaml(OVERLAP).unwrap())
+    late = sys("late", BoolLit(True))
+    assert decide(c, facts(late)) == NeedInfo("wantsRefund", "Would you like your money back?", "missing",
+                                              ((BoolLit(True), "full_refund"), (BoolLit(False), "store_credit")))
+    no = Fact("wantsRefund", BoolLit(False), YES)
+    assert decide(c, facts(late, no)) == Decided("store_credit", ("O2",), (late,))
+
+
+def test_with_system_facts_missing_only_a_question_that_settles_the_open_outcome_is_asked():
+    """Retail store credit hangs on the return window (system facts not given): ask whether it was a final sale, since
+    "yes" rules store credit out; once that can't help, escalate and name the missing facts, never asking the rest."""
+    from conftest import load
+    c = compile(load("retail_refund.yaml"))
+    no_receipt = sys("hasProofOfPurchase", BoolLit(False))
+    asked = decide(c, facts(no_receipt))
+    assert isinstance(asked, NeedInfo) and asked.var == "isFinalSale"
+    final = Answered(asked.question, "case")
+    decided = decide(c, facts(no_receipt, Fact("isFinalSale", BoolLit(True), final)))
+    assert isinstance(decided, Decided) and decided.outcome == "no_refund"
+    stuck = decide(c, facts(no_receipt, Fact("isFinalSale", BoolLit(False), final)))
+    assert isinstance(stuck, Escalate) and "store_credit" in stuck.reason and "daysSincePurchase" in stuck.reason
+
+
+def test_an_open_outcome_the_solver_gives_up_on_escalates(monkeypatch):
+    from policyproof.core import decide as decide_module
+    from policyproof.core.codec import from_yaml
+    from policyproof.core.solver import Unknown
+    monkeypatch.setattr(decide_module, "decidable", lambda *_, **__: Unknown("timeout"))
+    d = decide(compile(from_yaml(OVERLAP).unwrap()), facts(sys("late", BoolLit(True))))
+    assert d == Escalate("the solver gave up on outcome full_refund: timeout")
+
+
 def test_a_policy_without_outcomes_escalates():
     from policyproof.core.codec import from_yaml
     p = from_yaml(EDGE.split("outcomes:")[0]).unwrap()

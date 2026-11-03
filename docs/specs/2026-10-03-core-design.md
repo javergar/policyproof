@@ -217,10 +217,11 @@ it refined the spec in these places:
 - `Eq` is `Cmp(op="eq")`. `prove.Verdict` adds `Undetermined(reason)` for when the solver gives up.
 - `UnreachableEnumValue` becomes `ImpossibleInput(var, value)`, which covers any Bool or enum input. Two findings are
   added: `OverlappingOutcomes` (review) and `SolverGaveUp` (error).
-- Law L8 (monotonicity) needs outcomes that can't hold together. When two outcomes overlap, the earlier one wins, so
-  a decision can depend on outcome order. The validator reports each overlap for review. The airline policy has one
-  overlap (free rebooking and "no refund or credit"). The retail policy has a real gap: nothing stops a refund and
-  store credit at once.
+- Law L8 (monotonicity) holds even when outcomes overlap: `decide` never decides a later outcome while more facts
+  could still prove an earlier one, so more facts can't flip a decision. When two outcomes overlap, the earlier one
+  wins, so a decision can depend on outcome order. The validator reports each overlap for review. The airline policy
+  has one overlap (free rebooking and "no refund or credit"). The retail policy has a real gap: nothing stops a
+  refund and store credit at once.
 - YAML traps the decoder now explains:
   - `YES`, `NO`, `ON` and `OFF` are booleans in YAML 1.1.
   - A comma or `?` inside `{ }` splits the value.
@@ -233,8 +234,10 @@ it refined the spec in these places:
   system variable is never firm. Consistency is judged on firm facts only, so contradictory statements a customer
   only made in passing lead to a confirmation question, not a `Contradiction`.
 - **`decide` escalates instead of guessing.** It escalates up front when the policy has no outcomes, and when the
-  solver gives up on an earlier outcome (it never skips past it). Int and Real questions are asked only when nothing
-  else is left.
+  solver gives up on an earlier outcome (it never skips past it). Nor does it skip an earlier outcome that more facts
+  could still prove: it asks a question with an answer that settles it, or escalates when none has one (the outcome
+  hangs on system facts not given). Only an earlier outcome no facts could ever prove is passed over. Int and Real
+  questions are asked only when nothing else is left.
 - **Every solver call has a timeout** (`compile(p, timeout_ms=10_000)`). A check the solver gives up on is reported
   as `SolverGaveUp` in validation, and never counts as a pass.
 - **Validation reports `InputsRelated(rule)` for review.** It flags rules that only relate inputs, because `decide`

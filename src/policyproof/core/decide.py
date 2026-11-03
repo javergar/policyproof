@@ -5,12 +5,16 @@
    Firm facts: anything from a system; answers to a question about an askable variable; and volunteered facts about
    askable variables that don't need confirmation. Customers can't supply system facts: what they say about one is
    never firm.
-2. The first outcome (in policy order) proven from the firm facts is `Decided`. If the solver gives up on an earlier
-   outcome, the result is `Escalate`: a later outcome is never decided past one that might hold.
+2. The first outcome (in policy order) proven from the firm facts is `Decided`. A later outcome is never decided past
+   one that might hold: an earlier outcome that more facts could still prove means asking (step 4), and one the
+   solver gives up on means `Escalate`. An earlier outcome no facts could ever prove (the policy never settles it)
+   doesn't block.
 3. If an outcome is proven only with a volunteered fact, that fact is confirmed first: `NeedInfo(reason="confirm")`.
 4. Otherwise the policy asks about the askable variable whose answers decide the most outcomes (the what-if table),
    ties broken by policy order; Int and Real questions (whose answers can't be enumerated) only when nothing else
-   is left. With nothing left to ask, or no outcomes at all: `Escalate`.
+   is left. While an earlier outcome is open, only a question with an answer that settles it is asked; when none
+   has one (it hangs on system facts not given, say), the result is `Escalate`. With nothing left to ask, or no
+   outcomes at all: `Escalate`.
 """
 from __future__ import annotations
 
@@ -21,9 +25,9 @@ from typing import Literal, assert_never
 from returns.pipeline import is_successful
 
 from policyproof.core.facts import Answered, Fact, Facts, FromSystem, Volunteered, all_facts
-from policyproof.core.prove import Proven, Undetermined, classify
+from policyproof.core.prove import Contingent, Inconsistent, Proven, Refuted, Undetermined, classify
 from policyproof.core.semantics import free_vars, rule_expr
-from policyproof.core.solver import Compiled, FactLabel, Label, RuleLabel, Sat, Unknown, Unsat, check, fact
+from policyproof.core.solver import Compiled, FactLabel, Label, RuleLabel, Sat, Unknown, Unsat, check, decidable, fact
 from policyproof.core.syntax import (
     And,
     Ask,
@@ -36,6 +40,7 @@ from policyproof.core.syntax import (
     Expr,
     Lit,
     Outcome,
+    System,
     Var,
     Variable,
 )
@@ -149,14 +154,53 @@ class _GaveUp:
     reason: str
 
 
-def _first_proven(c: Compiled, fs: Sequence[Fact]) -> _Hit | _GaveUp | None:
-    """The first outcome the facts prove; or the first one the solver couldn't settle, which blocks later ones."""
+@dataclass(frozen=True, slots=True)
+class _Open:
+    """An outcome the facts leave open that more facts could still prove: no later outcome is decided past it."""
+    outcome: str
+
+
+def _inputs(c: Compiled) -> frozenset[str]:
+    return frozenset(v.name for v in c.policy.variables if not isinstance(v.role, Derived))
+
+
+def _step(c: Compiled, o: Outcome, given: Sequence[tuple[Label, Expr]]
+          ) -> Proven | Inconsistent | _GaveUp | _Open | None:
+    """Where the facts leave one outcome: proven, contradictory facts, given up on, open, or (None) out of the way of
+    later outcomes, because the facts rule it out or no further facts could ever prove it."""
+    verdict = classify(c, outcome_expr(o), given)
+    match verdict:
+        case Proven() | Inconsistent():
+            return verdict
+        case Refuted():
+            return None
+        case Undetermined(reason):
+            return _GaveUp(o.name, reason)
+        case Contingent():
+            match decidable(c, _inputs(c), given=[e for _, e in given], outcomes=[o.name]):
+                case Sat():
+                    return _Open(o.name)
+                case Unknown(reason):
+                    return _GaveUp(o.name, reason)
+                case Unsat():
+                    return None
+                case other:
+                    assert_never(other)
+        case _:
+            assert_never(verdict)
+
+
+def _first_proven(c: Compiled, fs: Sequence[Fact]) -> _Hit | _GaveUp | _Open | None:
+    """The first outcome the facts prove, unless an earlier one is still open or the solver gave up on it."""
+    given = fact_assertions(fs)
     for o in c.policy.outcomes:
-        verdict = classify(c, outcome_expr(o), fact_assertions(fs))
-        if isinstance(verdict, Proven):
-            return _Hit(o, verdict.core)
-        if isinstance(verdict, Undetermined):
-            return _GaveUp(o.name, verdict.reason)
+        match _step(c, o, given):
+            case Proven(core):
+                return _Hit(o, core)
+            case _GaveUp() | _Open() as stop:
+                return stop
+            case Inconsistent() | None:
+                pass
     return None
 
 
@@ -178,13 +222,29 @@ def what_if(c: Compiled, firm: Sequence[Fact], var: str) -> tuple[tuple[Lit, str
     return tuple(out)
 
 
-def _question(c: Compiled, firm: Sequence[Fact], every: Sequence[Fact], unclear: frozenset[str]) -> Decision:
+def _settles(c: Compiled, firm: Sequence[Fact], var: str, blocked: str) -> bool:
+    """Some possible answer to `var` proves the open outcome `blocked` or moves it out of the way."""
+    o = next(x for x in c.policy.outcomes if x.name == blocked)
+    return any(isinstance(_step(c, o, fact_assertions([*firm, Fact(var, value, Answered("", ""))])), Proven | None)
+               for value in _answers(_variable(c, var)))
+
+
+def _question(c: Compiled, firm: Sequence[Fact], every: Sequence[Fact], unclear: frozenset[str],
+              blocked: str | None) -> Decision:
+    """`blocked`: an outcome still open that holds up the decision, so only a question that can settle it is asked."""
     known = {f.var for f in firm}
     used = frozenset().union(*(free_vars(rule_expr(r)) for r in c.policy.rules))
     candidates = [v for v in c.policy.variables
                   if isinstance(v.role, Ask) and v.name not in known and v.name in used]
     enumerable = [v for v in candidates if _answers(v)]
-    candidates = enumerable or candidates
+    if blocked is not None:
+        enumerable = [v for v in enumerable if _settles(c, firm, v.name, blocked)]
+    candidates = enumerable or [v for v in candidates if not _answers(v)]
+    if not candidates and blocked is not None:
+        missing = [v.name for v in c.policy.variables
+                   if isinstance(v.role, System) and v.name not in known and v.name in used]
+        unsupplied = f"; it depends on facts not given: {', '.join(missing)}" if missing else ""
+        return Escalate(f"outcome {blocked} may still hold and no question can settle it{unsupplied}")
     if not candidates:
         return Escalate("no outcome can be proven and there is nothing left to ask")
     tables = [what_if(c, firm, v.name) for v in candidates]
@@ -219,11 +279,14 @@ def decide(c: Compiled, fs: Facts, *, unclear: frozenset[str] = frozenset()) -> 
             pass
         case other:
             assert_never(other)
+    blocked: str | None = None
     match _first_proven(c, firm):
         case _Hit(o, core):
             return Decided(o.name, _rule_ids(c, core), _facts_in(core, firm))
         case _GaveUp(name, reason):
             return Escalate(f"the solver gave up on outcome {name}: {reason}")
+        case _Open(name):
+            blocked = name
         case None:
             pass
     pending = [f for f in every if _needs_confirmation(c, f)]
@@ -235,4 +298,4 @@ def decide(c: Compiled, fs: Facts, *, unclear: frozenset[str] = frozenset()) -> 
             role = _variable(c, var).role
             assert isinstance(role, Ask)
             return NeedInfo(var, role.question, "confirm", what_if(c, firm, var))
-    return _question(c, firm, every, unclear)
+    return _question(c, firm, every, unclear, blocked)
