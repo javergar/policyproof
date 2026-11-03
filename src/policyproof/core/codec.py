@@ -143,7 +143,10 @@ def from_yaml_text(text: str) -> Result[Tree, DecodeError]:
         return Failure(DecodeError("", f"invalid YAML: {problem}{hint}", pos))
     if node is None:
         return Failure(DecodeError("", "the document is empty"))
-    tree = _from_node(node)
+    try:
+        tree = _from_node(node, set())
+    except _NodeError as err:
+        return Failure(err.error)
     duplicate = _duplicate_key(tree, "")
     return Failure(duplicate) if duplicate else Success(tree)
 
@@ -166,13 +169,39 @@ def _duplicate_key(t: Tree, path: str) -> DecodeError | None:
             raise AssertionError("unreachable")
 
 
-def _from_node(node: yaml.Node) -> Tree:
+class _NodeError(Exception):
+    def __init__(self, error: DecodeError) -> None:
+        self.error = error
+
+
+_YAML_TAG = "tag:yaml.org,2002:"
+
+
+def _from_node(node: yaml.Node, seen: set[int]) -> Tree:
+    """Visits each node once: a node met twice is an alias, rejected so `&a [*a]` and nested aliases can't blow up."""
     pos = Pos(node.start_mark.line + 1, node.start_mark.column + 1)
+    if id(node) in seen:
+        raise _NodeError(DecodeError("", "YAML anchors and aliases (&name, *name) aren't supported", pos))
+    seen.add(id(node))
+    if node.tag == _YAML_TAG + "merge":
+        raise _NodeError(DecodeError("", "YAML merge keys (<<) aren't supported", pos))
+    kind = {yaml.MappingNode: "map", yaml.SequenceNode: "seq"}.get(type(node))  # scalars: checked when constructed
+    if (not node.tag.startswith(_YAML_TAG) or node.tag.startswith(_YAML_TAG + "python/")
+            or (kind is not None and node.tag != _YAML_TAG + kind)):
+        raise _NodeError(DecodeError("", f"the YAML tag {node.tag.replace(_YAML_TAG, '!!', 1)} isn't supported", pos))
     if isinstance(node, yaml.MappingNode):
-        return Map(tuple((str(k.value), _from_node(v)) for k, v in node.value), pos)
+        items: list[tuple[str, Tree]] = []
+        for k, v in node.value:
+            _from_node(k, seen)  # keys are checked too (aliases, tags), though only their text is kept
+            items.append((str(k.value), _from_node(v, seen)))
+        return Map(tuple(items), pos)
     if isinstance(node, yaml.SequenceNode):
-        return Seq(tuple(_from_node(x) for x in node.value), pos)
-    value = yaml.SafeLoader("").construct_object(node, deep=True)
+        return Seq(tuple(_from_node(x, seen) for x in node.value), pos)
+    try:
+        value = yaml.SafeLoader("").construct_object(node, deep=True)
+    except (yaml.YAMLError, ValueError, LookupError, AttributeError) as err:  # e.g. `!!int abc`, `!!bool abc`
+        problem = str(getattr(err, "problem", None) or err)
+        raise _NodeError(DecodeError("", f"invalid YAML value {node.value!r}: {problem}", pos)) from None
     atom = value if isinstance(value, str | int | float | bool) or value is None else str(value)
     return Scalar(atom, pos, str(node.value))
 

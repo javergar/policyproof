@@ -127,3 +127,23 @@ def test_a_question_mark_in_a_flow_map_gets_a_hint():
 def test_duplicate_keys_are_errors_not_first_wins():
     err = failure(TOY_HEAD + "  - { id: R1, when: b, then: b, then: { not: b } }\n")
     assert isinstance(err, DecodeError) and err.path == "rules[0]" and "duplicate key 'then'" in err.message
+
+
+LAUGHS = "a: &a [x, x, x, x, x, x, x, x, x, x]\n" + "".join(
+    f"{b}: &{b} [{', '.join([f'*{a}'] * 10)}]\n" for a, b in zip("abcde", "bcdef", strict=True))
+
+
+@pytest.mark.parametrize(("text", "message"), [
+    ("policy: !foo bar\n", "tag !foo"),
+    ("policy: !!python/object:os.system x\n", "tag !!python/object:os.system"),
+    ('policy: t\nversion: !!int abc\n', "invalid YAML value 'abc'"),
+    ("a: &a [*a]\n", "anchors and aliases"),
+    (LAUGHS, "anchors and aliases"),
+    ("a: !!int {b: 1}\n", "tag !!int"),
+    ("a: !!str [1]\n", "tag !!str"),
+    ("a: !!set {b, c}\n", "tag !!set"),
+    ("a:\n  <<: {b: 1}\n", "merge keys"),
+])
+def test_tags_aliases_and_bad_scalars_are_failures_not_crashes(text, message):
+    err = failure(text)
+    assert isinstance(err, DecodeError) and message in err.message and err.pos is not None
