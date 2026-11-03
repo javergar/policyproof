@@ -17,12 +17,20 @@ from returns.result import Success
 
 from policyproof.core.decide import Decided, Decision, NeedInfo, fact_assertions, firm_facts, outcome_expr
 from policyproof.core.facts import Facts
-from policyproof.core.prove import Contingent, Inconsistent, Proven, Refuted, Undetermined, classify, entails
+from policyproof.core.prove import (
+    Contingent,
+    Inconsistent,
+    Proven,
+    Refuted,
+    Undetermined,
+    classify,
+    entails,
+)
 from policyproof.core.solver import Compiled
 from policyproof.core.syntax import BOOL, Expr
 from policyproof.core.typecheck import signature, sort_of
 
-type ClaimStatus = Literal["proven", "contradicts", "not_proven", "inconsistent", "ungrounded", "ill_typed"]
+type ClaimStatus = Literal["proven", "contradicts", "not_proven", "inconsistent", "ungrounded", "ill_typed", "vacuous"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +77,9 @@ def normalize(text: str) -> str:
 def judge_claims(c: Compiled, fs: Facts, reply: str, claims: Sequence[Claim]) -> tuple[ClaimResult, ...]:
     """Each claim's status against the rules and the firm facts. 'ungrounded': the quote isn't in the reply, so the
     claim can't be tied to what the customer would read. 'ill_typed': not a Boolean statement over the policy's
-    names (a translator error), so it can't be checked at all."""
+    names (a translator error), so it can't be checked at all. 'vacuous': the rules prove it with no facts at all (e.g.
+    `voucher or not voucher`, or a rule restated), so it says nothing about this case and its quote is left
+    unchecked. A claim made empty by the facts themselves (a false "if", or a weakening "or") isn't caught."""
     text, given, sig = normalize(reply), fact_assertions(firm_facts(c, fs)), signature(c.policy)
 
     def status(claim: Claim) -> ClaimStatus:
@@ -77,6 +87,8 @@ def judge_claims(c: Compiled, fs: Facts, reply: str, claims: Sequence[Claim]) ->
             return "ungrounded"
         if sort_of(sig, claim.expr) != Success(BOOL):
             return "ill_typed"
+        if isinstance(classify(c, claim.expr), Proven):
+            return "vacuous"
         verdict = classify(c, claim.expr, given)
         match verdict:
             case Proven():
@@ -106,7 +118,9 @@ def claims_hold(i: CheckInput) -> tuple[Problem, ...]:
     words = {"contradicts": "contradicts the policy and the facts",
              "ill_typed": "can't be checked: it isn't a statement over the policy's terms",
              "not_proven": "is not proven: nothing in the decision supports it",
-             "inconsistent": "rests on facts that contradict each other"}
+             "inconsistent": "rests on facts that contradict each other",
+             "vacuous": "can't be checked: the policy makes it true whatever the facts are, so it says nothing about "
+                        "this case"}
     return tuple(Problem("claims_hold", f'"{r.claim.quote}" {words[r.status]}.')
                  for r in i.claims if r.status in words)
 

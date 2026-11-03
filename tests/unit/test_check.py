@@ -11,7 +11,7 @@ from policyproof.core.check import (
 from policyproof.core.decide import NeedInfo, decide
 from policyproof.core.facts import Answered, Fact, FromSystem, facts
 from policyproof.core.solver import compile
-from policyproof.core.syntax import BoolLit, IntLit, Var
+from policyproof.core.syntax import BoolLit, Cmp, Implies, IntLit, Not, Or, Var
 
 LATE = Fact("daysLate", IntLit(3), FromSystem("tracking"))
 WANTS = Fact("wantsRefund", BoolLit(True), Answered("Would you like your money back?", "yes"))
@@ -61,6 +61,17 @@ def test_ill_typed_claims_are_problems_not_crashes(toy):
     result = check_reply(c, d, fs, reply, claims)
     assert [r.status for r in result.claims] == ["proven", "ill_typed", "ill_typed"]
     assert not result.passed
+
+
+def test_a_claim_the_policy_makes_true_whatever_the_facts_leaves_its_quote_unchecked(toy):
+    c, d, fs = setup(toy, LATE, WANTS)
+    reply = "You will get a full refund, and you'll also get a voucher."
+    quote = "you'll also get a voucher"
+    for says_nothing in (Or((Var("voucher"), Not(Var("voucher")))),  # true by logic
+                         Implies(Var("refund"), Not(Var("voucher"))),  # rule T5 restated
+                         Cmp("ge", Var("daysLate"), IntLit(0))):  # constraint T6
+        result = check_reply(c, d, fs, reply, [REFUND, Claim(says_nothing, quote)])
+        assert not result.passed and [r.status for r in result.claims] == ["proven", "vacuous"], says_nothing
 
 
 def test_a_decided_reply_must_state_the_outcome(toy):

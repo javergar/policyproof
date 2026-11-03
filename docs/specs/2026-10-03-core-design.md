@@ -244,7 +244,9 @@ it refined the spec in these places:
   uses such a rule to infer an input it hasn't been told instead of asking, and answers that break it end in a
   contradiction at run time.
 - **The answer check fails closed.** The built-in `grounded` rule fails a claim whose quote isn't in the reply. A claim
-  that isn't a Boolean statement over the policy's names is `ill_typed`, and is also a problem.
+  that isn't a Boolean statement over the policy's names is `ill_typed`, and one the rules prove with no facts at all
+  (such as `voucher or not voucher`, or a rule restated) is `vacuous`, since it says nothing about the case; both are
+  also problems.
 - **The decoder catches more YAML mistakes:**
   - It rejects duplicate keys.
   - It explains `YES`, `NO`, `ON` and `OFF` wherever they appear, not only in sort definitions.
