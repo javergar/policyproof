@@ -134,11 +134,13 @@ def asks_open_question(i: CheckInput) -> tuple[Problem, ...]:
 
 
 def single_question(i: CheckInput) -> tuple[Problem, ...]:
-    """A yes/no answer is only unambiguous if the question isn't "A, or B?"."""
+    """A yes/no answer is only unambiguous if the question isn't "A, or B?". The policy's own question may contain
+    "or" (it is asked word for word), so only the words around it are checked."""
     if not isinstance(i.decision, NeedInfo):
         return ()
-    questions = re.findall(r"[^.?!]*\?", i.reply)
-    if any(re.search(r"\bor\b", q, re.IGNORECASE) for q in questions):
+    own = normalize(i.decision.question)
+    questions = (normalize(q).removesuffix(own) for q in re.findall(r"[^.?!]*\?", i.reply))
+    if any(re.search(r"\bor\b", q) for q in questions):
         return (Problem("single_question", "Ask one yes/no question, not an either/or question."),)
     return ()
 

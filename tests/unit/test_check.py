@@ -1,3 +1,5 @@
+from conftest import load
+
 from policyproof.core.check import (
     DEFAULT_RULES,
     Claim,
@@ -6,7 +8,7 @@ from policyproof.core.check import (
     only_entities,
     require_mention,
 )
-from policyproof.core.decide import decide
+from policyproof.core.decide import NeedInfo, decide
 from policyproof.core.facts import Answered, Fact, FromSystem, facts
 from policyproof.core.solver import compile
 from policyproof.core.syntax import BoolLit, IntLit, Var
@@ -76,6 +78,19 @@ def test_the_open_question_is_asked_verbatim_last_and_alone(toy):
     assert ok.passed
     assert [p.rule for p in reworded.problems] == ["asks_open_question"]
     assert [p.rule for p in not_last.problems] == ["asks_open_question"]
+    assert [p.rule for p in either_or.problems] == ["single_question"]
+
+
+def test_a_policy_question_containing_or_is_not_an_either_or_question():
+    c = compile(load("retail_refund.yaml"))
+    fs = facts(Fact("isFinalSale", BoolLit(False), Answered("Was it a final sale?", "no")),
+               Fact("hasProofOfPurchase", BoolLit(True), FromSystem("orders")),
+               Fact("daysSincePurchase", IntLit(3), FromSystem("orders")))
+    d = decide(c, fs)
+    assert isinstance(d, NeedInfo) and d.question == "Has the item been opened or used?"
+    ok = check_reply(c, d, fs, "Thanks. Has the item been opened or used?", [])
+    either_or = check_reply(c, d, fs, "Would you like a voucher, or has the item been opened or used?", [])
+    assert ok.passed
     assert [p.rule for p in either_or.problems] == ["single_question"]
 
 
