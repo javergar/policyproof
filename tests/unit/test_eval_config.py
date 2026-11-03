@@ -34,13 +34,16 @@ def test_a_config_file_decodes():
 
 def test_build_makes_one_reader_per_model_and_combines_them():
     haiku = TestModel()
-    built = build(decode_config(DATA).unwrap(), {"haiku": haiku, "sonnet": TestModel(), "jev": jev_model()}).unwrap()
+    jev = jev_model()
+    built = build(decode_config(DATA).unwrap(), {"haiku": haiku, "sonnet": TestModel(), "jev": jev}).unwrap()
     plain, mixed = built
     assert plain.name == "haiku-only" and isinstance(plain.answers, LLMReaders) and plain.answers.model is haiku
     assert plain.answers is plain.facts is plain.claims is plain.rewriter  # one reader per model
     assert isinstance(mixed.answers, AgreeingAnswers) and isinstance(mixed.answers.a, JevReaders)
     assert isinstance(mixed.facts, AgreeingFacts) and isinstance(mixed.claims, UnionClaims)
     assert (mixed.min_confidence, mixed.firm_confidence) == (0.6, 0.9)
+    # Jev's answer reader applies the configuration's min_confidence itself, on the one Jev model
+    assert mixed.answers.a.model is jev and mixed.answers.a.min_confidence == 0.6
 
 
 def test_build_infers_models_from_their_strings():

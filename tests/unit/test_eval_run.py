@@ -120,6 +120,14 @@ def test_the_draft_sent_unchanged_after_a_no_op_rewrite_is_wrong():
     assert case.grade == Wrong("the draft was sent as written, expected it to be caught")
 
 
+def test_a_caught_case_that_fell_back_before_any_check_is_conservative():
+    """A broken claims reader falls back to the template without checking the draft: nothing was caught."""
+    broken = config(claims=Claims([Failure(Unavailable("401 bad key"))]),
+                    rewriter=Rewriter(Failure(Unavailable("401 bad key"))))
+    case = asyncio.run(evaluate(CASES, [broken], runs=1)).configurations[0].cases[1]
+    assert case.grade == Conservative("no check ran: the reply fell back before it was checked")
+
+
 def test_there_must_be_cases():
     import pytest
     empty = decode({"policy": str(POLICIES / "toy.yaml"), "cases": []}, POLICIES).unwrap()

@@ -166,16 +166,17 @@ def _is_jev(m: Model) -> bool:
     return isinstance(m, TypeSafeModel)
 
 
-def _jev_reader(m: Model) -> "JevReaders":
+def _jev_reader(m: Model, min_confidence: float) -> "JevReaders":
     from policyproof.effects.jev.readers import JevReaders  # imported only when a Jev model is used: needs [jev]
-    return JevReaders(m)
+    return JevReaders(m, min_confidence=min_confidence)
 
 
 def build(cf: ConfigFile, models: Mapping[str, Model] | None = None) -> Result[tuple[Configuration, ...], ConfigError]:
-    """The configurations, with one reader per model they use (models no configuration uses aren't built).
+    """The configurations, with one model per name they use (models no configuration uses aren't built) and one
+    reader per chat model; a Jev model gets a reader per configuration, since it applies `min_confidence` itself.
     `models` replaces model strings (tests pass FunctionModels)."""
     chat: dict[str, LLMReaders] = {}
-    jev: dict[str, JevReaders] = {}
+    jev: dict[str, Model] = {}
     used = {m for s in cf.configurations for slot in (s.answers, s.facts, s.claims, s.rewriter)
             for m in ((slot.model,) if isinstance(slot, Use) else (slot.a, slot.b))}
     for name, spec in cf.models.items():
@@ -186,18 +187,15 @@ def build(cf: ConfigFile, models: Mapping[str, Model] | None = None) -> Result[t
         except Exception as e:
             return _err(f"models.{name}", f"can't build {spec!r}: {e}")
         if _is_jev(m):
-            jev[name] = _jev_reader(m)
+            jev[name] = m
         else:
             chat[name] = LLMReaders(m)
 
-    def reads(name: str) -> "LLMReaders | JevReaders":
-        return chat[name] if name in chat else jev[name]
+    def answers(slot: Use | Agree, reads: Mapping[str, "LLMReaders | JevReaders"]) -> AnswerReader:
+        return reads[slot.model] if isinstance(slot, Use) else AgreeingAnswers(reads[slot.a], reads[slot.b])
 
-    def answers(s: Use | Agree) -> AnswerReader:
-        return reads(s.model) if isinstance(s, Use) else AgreeingAnswers(reads(s.a), reads(s.b))
-
-    def facts(s: Use | Agree) -> FactReader:
-        return reads(s.model) if isinstance(s, Use) else AgreeingFacts(reads(s.a), reads(s.b))
+    def facts(slot: Use | Agree, reads: Mapping[str, "LLMReaders | JevReaders"]) -> FactReader:
+        return reads[slot.model] if isinstance(slot, Use) else AgreeingFacts(reads[slot.a], reads[slot.b])
 
     built: list[Configuration] = []
     for s in cf.configurations:
@@ -205,8 +203,9 @@ def build(cf: ConfigFile, models: Mapping[str, Model] | None = None) -> Result[t
         for name in [*writers, s.rewriter.model]:
             if name not in chat:
                 return _err(f"configurations.{s.name}", f"{name} is a Jev model; Jev reads only answers and facts")
+        reads = {**chat, **{name: _jev_reader(m, s.min_confidence) for name, m in jev.items()}}
         claims: ClaimReader = (chat[s.claims.model] if isinstance(s.claims, Use)
                                else UnionClaims(chat[s.claims.a], chat[s.claims.b]))
-        built.append(Configuration(s.name, answers(s.answers), facts(s.facts), claims, chat[s.rewriter.model],
-                                   s.min_confidence, s.firm_confidence))
+        built.append(Configuration(s.name, answers(s.answers, reads), facts(s.facts, reads), claims,
+                                   chat[s.rewriter.model], s.min_confidence, s.firm_confidence))
     return Success(tuple(built))

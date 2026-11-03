@@ -69,14 +69,16 @@ def test_expected_facts_must_be_read_with_their_values():
         "misread wantsRefund: read false, expected true")  # the worse of decision and facts
 
 
-@pytest.mark.parametrize(("expect", "as_written", "grade"), [
-    ("caught", False, Correct()),
-    ("caught", True, Wrong("the draft was sent as written, expected it to be caught")),
-    ("pass", True, Correct()),
-    ("pass", False, Conservative("a good draft was rewritten or replaced")),
+@pytest.mark.parametrize(("expect", "as_written", "checked", "grade"), [
+    ("caught", False, True, Correct()),
+    ("caught", False, False, Conservative("no check ran: the reply fell back before it was checked")),
+    ("caught", True, True, Wrong("the draft was sent as written, expected it to be caught")),
+    ("pass", True, True, Correct()),
+    ("pass", False, True, Conservative("a good draft was rewritten or replaced")),
+    ("pass", False, False, Conservative("a good draft was rewritten or replaced")),
 ])
-def test_reply_grading_table(expect, as_written, grade):
-    assert grade_reply(ReplyCase("c", False, {}, "d", expect), ReplySeen(as_written)) == grade
+def test_reply_grading_table(expect, as_written, checked, grade):
+    assert grade_reply(ReplyCase("c", False, {}, "d", expect), ReplySeen(as_written, checked)) == grade
 
 
 def test_a_case_is_as_bad_as_its_worst_run():

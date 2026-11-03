@@ -151,7 +151,8 @@ async def _reply(c: Compiled, cfg: Configuration, case: ReplyCase) -> tuple[Grad
         return grade_reply(case, Crashed(crash)), (f"crashed: {crash}",)
     # "As written" is about the text sent, not the number of attempts: a rewrite that returns the draft unchanged
     # and passes a second (mis)read still sends the draft.
-    seen = ReplySeen(as_written=not g.fell_back and normalize(g.text) == normalize(case.draft))
+    seen = ReplySeen(as_written=not g.fell_back and normalize(g.text) == normalize(case.draft),
+                     checked=g.result is not None)
     return grade_reply(case, seen), (_decision_line(d), *_reply_trace(g))
 
 

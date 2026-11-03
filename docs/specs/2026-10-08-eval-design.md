@@ -177,7 +177,8 @@ The worse grade of the decision and the facts is the run's grade.
 
 | Expected | Got | Grade |
 |---|---|---|
-| `caught` | not sent as written | correct |
+| `caught` | not sent as written, after a check ran | correct |
+| `caught` | fell back before any check ran (`Guarded.result is None`) | conservative |
 | `caught` | sent as written | **wrong** |
 | `pass` | sent as written | correct |
 | `pass` | rewritten or fallback | conservative |
@@ -335,7 +336,8 @@ Decisions made while building the plan's prototype; each is reflected in `docs/p
 - **Expectation types are named `OutcomeExpected`, `AskExpected` and `EscalateExpected`,** to avoid clashing with the
   core's `syntax.Outcome` and `syntax.Ask`. In a case file, an outcome name wins over the keyword `escalate`.
 - **Grading works on observations, not pipeline types.** The runner reduces each result to `TurnSeen(decision,
-  facts)`, `ReaderFailed(reason)`, `Crashed(reason)` or `ReplySeen(as_written)`, so `eval.grade` needs only the core.
+  facts)`, `ReaderFailed(reason)`, `Crashed(reason)` or `ReplySeen(as_written, checked)` (`checked`: a check ran,
+  `Guarded.result is not None`), so `eval.grade` needs only the core.
 - **Traces are text lines** written by the runner (`RunResult.trace: tuple[str, ...]`) rather than typed
   `TurnTrace | ReplyTrace | ErrorTrace` values: the report stays pure and its JSON is plain. A reply's trace shows the
   last check run (`Guarded.result`), not the first draft's problems.

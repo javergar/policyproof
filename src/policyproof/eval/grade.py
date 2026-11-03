@@ -52,6 +52,7 @@ class Crashed:
 @dataclass(frozen=True, slots=True)
 class ReplySeen:
     as_written: bool  # the draft was sent unchanged
+    checked: bool  # a check ran (it didn't fall back before any check could)
 
 
 type TurnOutcome = TurnSeen | ReaderFailed | Crashed
@@ -158,9 +159,12 @@ def grade_reply(case: ReplyCase, seen: ReplyOutcome) -> Grade:
     match seen:
         case Crashed(reason):
             return Wrong(f"crashed: {reason}")
-        case ReplySeen(as_written):
+        case ReplySeen(as_written, checked):
             if case.expect == "caught":
-                return Wrong("the draft was sent as written, expected it to be caught") if as_written else Correct()
+                if as_written:
+                    return Wrong("the draft was sent as written, expected it to be caught")
+                # A first check that passes sends the draft as written, so a check ran here only if one failed it.
+                return Correct() if checked else Conservative("no check ran: the reply fell back before it was checked")
             return Correct() if as_written else Conservative("a good draft was rewritten or replaced")
         case _:
             assert_never(seen)
