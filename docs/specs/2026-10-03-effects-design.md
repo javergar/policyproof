@@ -120,7 +120,7 @@ type Evidence = Quoted | Scored
 ## Errors
 
 ```python
-type LLMError = Unavailable | Malformed | Refused   # each a frozen dataclass with `message: str`
+type LLMError = Unavailable | Malformed | Refused | Unsupported   # each a frozen dataclass with `message: str`
 ```
 
 | Error | When |
@@ -128,6 +128,7 @@ type LLMError = Unavailable | Malformed | Refused   # each a frozen dataclass wi
 | `Unavailable` | Network failure, throttling, authentication, or a 5xx (`ModelAPIError`, `ModelHTTPError`). |
 | `Malformed` | Retries ran out (`UnexpectedModelBehavior`), or the final output failed its guard. |
 | `Refused` | The model declined or a content filter fired, or Jev handed off (`DecisionHandOff`, including `UnsureRoute` and `UnfillableRoute`). |
+| `Unsupported` | The reader can't read this kind of value at all (Jev asked for an Int or Real answer): it has no reading, so another reader's stands. |
 
 Any other exception is a bug in our code or a misconfiguration, and propagates. A guard rejecting an item is **not**
 an error: it shows up as an `Unclear` reading or as an entry in a `rejected` list.
@@ -248,9 +249,15 @@ Each combinator wraps two ports into one and runs both concurrently.
 **`UnionClaims(a, b)`, a `ClaimReader`:** the claims from both readers, with duplicates removed by `(expr, quote)`
 equality.
 
-**One side failing:** if only one side fails, the combinator returns the other side's result. If both fail, it
-returns `a`'s error. Ports return only a `Result`, so a one-sided failure and a dropped disagreement are reported
-through the standard `logging` module (logger `policyproof.consensus`, level WARNING), not in the return value.
+**One side failing:** if only one side fails, the other side's result is not used alone, since that would accept
+more than a disagreement does. `AgreeingFacts` and `UnionClaims` return the error (so `read_turn` goes on without
+volunteered facts, and `guard_reply` sends the fallback); `AgreeingAnswers` returns `Unclear("a reader failed: ...")`
+with the error described, so the question is asked again and the turn's facts are kept. The exception is
+`Unsupported`: that side never had a reading, so `AgreeingAnswers` returns the other side's answer, as a single
+reader's, and nothing is logged (it would fire on every number question under Jev). If both fail, the combinator
+returns `a`'s error. Any other one-sided failure and a dropped disagreement are also reported through the standard
+`logging` module (logger `policyproof.consensus`, level WARNING); ports return only a `Result`, so for a fact dropped
+on a disagreement that is the only report.
 `Turn.degraded` covers only errors that `read_turn` itself observes.
 
 **Laws:**
@@ -370,7 +377,8 @@ milestone 1's fail-closed ruling.
   - the result is `Said(value, quote=message)`, because Jev can't point to a span (the guard's opening-word check
     still applies);
   - confidence below `min_confidence` gives `Unclear("low confidence")`.
-- **Exception mapping:** a `DecisionHandOff` becomes `Refused`, and API errors are mapped as for `effects.llm`.
+- **Exception mapping:** a `DecisionHandOff` becomes `Refused`, and API errors are mapped as for `effects.llm`. An
+  answer to an Int or Real variable is `Unsupported`, without a call.
 
 ## Testing
 
@@ -441,7 +449,8 @@ Decisions made while building the plan's prototype. Each is reflected in the pla
   because its questions come from them.
 - **Jev's fields are named `f0`, `f1`, ... with the variable names as aliases,** so a variable named like a pydantic
   attribute (`model_config`) still works. A policy with nothing Jev can ask makes no call, and a number answer is
-  `Refused`, so `AgreeingAnswers` uses the other reader.
+  `Unsupported`, so `AgreeingAnswers` uses the other reader's answer (a hand-off when Jev is unsure stays `Refused`,
+  which the other reader can't outvote).
 - **Prompt examples use the policy's own variable names,** with `{"real": "2.5"}` for Real variables.
 - **Tests run async code with `asyncio.run`;** no pytest-asyncio. Live tests need `PP_BEDROCK_MODEL` (an inference
   profile ID) and AWS credentials, or `TYPESAFE_API_KEY`, and are excluded from the default run.

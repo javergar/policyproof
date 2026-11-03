@@ -12,7 +12,7 @@ from policyproof.core.decide import decide
 from policyproof.core.facts import Answered, Fact, FromSystem, facts
 from policyproof.core.solver import compile
 from policyproof.core.syntax import BoolLit, IntLit
-from policyproof.effects.errors import Malformed, Refused, Unavailable
+from policyproof.effects.errors import Malformed, Refused, Unavailable, Unsupported
 from policyproof.effects.pipeline import guard_reply, template
 from policyproof.effects.ports import RawClaim
 
@@ -20,7 +20,7 @@ C = compile(load("toy.yaml"))
 FS = facts(Fact("daysLate", IntLit(3), FromSystem("t")), Fact("wantsRefund", BoolLit(True), Answered("q", "yes")))
 DECISION = decide(C, FS)
 TEXTS = st.sampled_from(["You'll get a refund.", "You'll get a voucher.", "Nothing."])
-ERRORS = st.sampled_from([Unavailable("u"), Malformed("m"), Refused("r")]).map(Failure)
+ERRORS = st.sampled_from([Unavailable("u"), Malformed("m"), Refused("r"), Unsupported("x")]).map(Failure)
 GOOD = Success((RawClaim("refund", "get a refund"),))
 RAW = st.builds(RawClaim, st.sampled_from(["refund", "voucher", {"not": "refund"}, 3]),
                 st.sampled_from(["get a refund", "get a voucher", "Nothing"]))

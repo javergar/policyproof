@@ -6,7 +6,7 @@ from returns.result import Failure, Success
 
 from policyproof.core.facts import Quoted, Scored
 from policyproof.effects.consensus import AgreeingAnswers, AgreeingFacts, UnionClaims
-from policyproof.effects.errors import Unavailable
+from policyproof.effects.errors import Unavailable, Unsupported
 from policyproof.effects.ports import NotAnswered, RawClaim, RawFact, Said, Unclear
 
 MSG = "It came by courier and I'd like my money back."
@@ -36,12 +36,29 @@ def test_a_disagreement_is_logged(toy, caplog):
     assert "readers disagree on wantsRefund" in caplog.text
 
 
-def test_one_failed_reader_leaves_the_other_and_is_logged(toy, caplog):
-    ok = Facts(Success((RawFact("wantsRefund", True, Scored(0.9)),)))
+def test_one_failed_reader_is_not_outvoted_by_the_other_and_is_logged(toy, caplog):
+    facts = Facts(Success((RawFact("wantsRefund", True, Scored(0.9)),)))
+    claims = Claims([Success((RawClaim("refund", "a refund"),))])
+    answers = Answers(Success(Said(True, "money back")))
     with caplog.at_level(logging.WARNING, logger="policyproof.consensus"):
-        assert asyncio.run(AgreeingFacts(ok, Facts(DOWN)).read_facts(toy, MSG)) == ok.result
-    assert "one reader failed" in caplog.text
+        assert asyncio.run(AgreeingFacts(facts, Facts(DOWN)).read_facts(toy, MSG)) == DOWN
+        assert asyncio.run(UnionClaims(Claims([DOWN]), claims).read_claims(toy, "reply")) == DOWN
+        got = asyncio.run(AgreeingAnswers(answers, Answers(DOWN)).read_answer(toy, "wantsRefund", MSG))
+    assert got == Success(Unclear("a reader failed: provider unavailable: down"))
+    assert caplog.text.count("one reader failed") == 3
     assert asyncio.run(AgreeingFacts(Facts(DOWN), Facts(Failure(Unavailable("also")))).read_facts(toy, MSG)) == DOWN
+    assert asyncio.run(AgreeingAnswers(Answers(DOWN), Answers(Failure(Unavailable("also"))))
+                       .read_answer(toy, "wantsRefund", MSG)) == DOWN
+
+
+def test_an_unsupported_reader_leaves_the_other_answer_without_a_warning(toy, caplog):
+    said = Answers(Success(Said(True, "money back")))
+    unsupported = Answers(Failure(Unsupported("no numbers")))
+    with caplog.at_level(logging.WARNING, logger="policyproof.consensus"):
+        assert asyncio.run(AgreeingAnswers(unsupported, said).read_answer(toy, "wantsRefund", MSG)) == said.result
+        assert asyncio.run(AgreeingAnswers(said, unsupported).read_answer(toy, "wantsRefund", MSG)) == said.result
+    assert "one reader failed" not in caplog.text
+    assert asyncio.run(AgreeingAnswers(unsupported, Answers(DOWN)).read_answer(toy, "wantsRefund", MSG)) == DOWN
 
 
 def test_answers_must_agree(toy):

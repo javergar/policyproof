@@ -20,7 +20,7 @@ from typesafe_sdk import AsyncTypeSafeClient
 
 from policyproof.core.codec import from_yaml
 from policyproof.core.facts import Scored
-from policyproof.effects.errors import Refused, Unavailable
+from policyproof.effects.errors import Refused, Unavailable, Unsupported
 from policyproof.effects.jev.readers import JevReaders, options
 from policyproof.effects.ports import AnswerReader, FactReader, NotAnswered, RawFact, Said, Unclear
 
@@ -110,10 +110,10 @@ def test_a_policy_with_nothing_jev_can_ask_makes_no_call():
     assert asyncio.run(JevReaders(jev).read_facts(load("weights.yaml"), "It weighs 30 kg")) == Success(())
 
 
-def test_jev_refuses_number_answers_so_consensus_uses_the_other_reader():
+def test_jev_number_answers_are_unsupported_so_consensus_uses_the_other_reader():
     jev = Offline(ModelAPIError("jev", "must not be called"))
     got = asyncio.run(JevReaders(jev).read_answer(load("weights.yaml"), "kg", "About 30 kg"))
-    assert isinstance(got.failure(), Refused)
+    assert isinstance(got.failure(), Unsupported)
 
 
 def test_phrasings_describe_jev_options():

@@ -296,8 +296,10 @@ callback, a payment method); catch those with the core's domain rules (`forbid`,
 
 Readers can be combined (`effects.consensus`): `AgreeingFacts(jev, llm)` keeps only facts both found,
 `AgreeingAnswers(a, b)` accepts an answer only if both read the same value, and `UnionClaims(a, b)` checks every claim
-either found. If one of the two fails, the other's result is used alone (as with a single reader) and a WARNING is
-logged on `policyproof.consensus`.
+either found. If one of the two fails, the other's result is not used alone: combined facts and claims fail as a
+single reader's would, and a combined answer is `Unclear`, so the question is asked again. A WARNING is logged on
+`policyproof.consensus`. The exception is a reader that can't read that kind of value at all (`Unsupported`, as Jev
+for number answers): it has no reading, so `AgreeingAnswers` uses the other's answer, without a warning.
 
 Quotes are matched on letters and digits a to z and 0 to 9 (the core's `normalize`), so text in other scripts
 (Chinese, Cyrillic, Arabic, ...) can't be quoted yet: every answer reads as unclear and every reply falls back.

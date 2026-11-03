@@ -4,8 +4,9 @@ Jev answers typed questions with probabilities instead of writing text. pydantic
 output type into Jev questions, so each reader builds one from the policy: a pick-one per variable, over the
 variable's values plus "not stated" (facts) or "unclear" and "not answered" (answers). Jev can't point to the words it
 read, so facts carry `Scored` evidence (its confidence) and an answer quotes the whole message. Int and Real
-variables can't be asked as a pick-one: facts skip them and an answer to one is `Refused`, so pair Jev with an LLM
-(`consensus.AgreeingFacts`, `AgreeingAnswers`) for those.
+variables can't be asked as a pick-one: facts skip them, and an answer to one is `Unsupported`, so under
+`consensus.AgreeingAnswers` the other reader's answer stands. (`AgreeingFacts` keeps only facts both readers report, so
+it drops number facts from the other reader.)
 """
 from dataclasses import dataclass
 from typing import Annotated, Any, assert_never
@@ -35,7 +36,7 @@ from policyproof.core.syntax import (
     Sort,
     Variable,
 )
-from policyproof.effects.errors import LLMError, Malformed, Refused, Unavailable
+from policyproof.effects.errors import LLMError, Malformed, Refused, Unavailable, Unsupported
 from policyproof.effects.ports import NotAnswered, RawAnswer, RawFact, Said, Unclear
 
 NOT_STATED, UNCLEAR, NOT_ANSWERED = "not_stated", "unclear", "not_answered"
@@ -128,7 +129,7 @@ class JevReaders:
     async def read_answer(self, p: CheckedPolicy, var: str, message: str) -> Result[RawAnswer, LLMError]:
         v = next(x for x in p.variables if x.name == var)
         if options(v) is None:
-            return Failure(Refused(f"Jev can't read a number for {var}; use an LLM reader for it"))
+            return Failure(Unsupported(f"Jev can't read a number for {var}; use an LLM reader for it"))
         agent = Agent(self.model, output_type=answer_type(v))
         match await _run(agent, message):
             case Success(run):

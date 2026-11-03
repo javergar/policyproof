@@ -4,9 +4,12 @@
 - `AgreeingAnswers` accepts an answer only if both read the same value; otherwise the question is asked again.
 - `UnionClaims` checks every claim either reader found: more claims can only fail more drafts.
 
-Values are compared as policy literals, so Jev's `"true"` agrees with an LLM's `True`. If one reader fails, the other's
-result is used; if both fail, the first error is returned. Ports return only a `Result`, so a one-sided failure and a
-disagreement are reported on the `policyproof.consensus` logger at WARNING.
+Values are compared as policy literals, so Jev's `"true"` agrees with an LLM's `True`. A failed reader is never
+outvoted by the other: if one fails, `AgreeingFacts` and `UnionClaims` return its error and `AgreeingAnswers` returns
+`Unclear`, as on a disagreement; if both fail, the first error is returned. The exception is an `Unsupported` reader
+(one that can't read that kind of value at all, like Jev and number answers): it has no reading, so `AgreeingAnswers`
+returns the other's answer, as a single reader's. Ports return only a `Result`, so a one-sided failure (other than
+`Unsupported`) and a disagreement are also reported on the `policyproof.consensus` logger at WARNING.
 """
 import asyncio
 import json
@@ -19,7 +22,7 @@ from returns.result import Failure, Result, Success
 from policyproof.core._result import unreachable
 from policyproof.core.facts import Evidence, Quoted, Scored
 from policyproof.core.syntax import CheckedPolicy, Lit, Policy
-from policyproof.effects.errors import LLMError, describe
+from policyproof.effects.errors import LLMError, Unsupported, describe
 from policyproof.effects.ports import (
     AnswerReader,
     ClaimReader,
@@ -40,16 +43,13 @@ async def _both[T](a: Awaitable[Result[T, LLMError]], b: Awaitable[Result[T, LLM
                    ) -> tuple[Result[T, LLMError], Result[T, LLMError]]:
     ra, rb = await asyncio.gather(a, b)
     match ra, rb:
+        case (Failure(Unsupported()), Success(_)) | (Success(_), Failure(Unsupported())):
+            pass
         case (Failure(e), Success(_)) | (Success(_), Failure(e)):
-            log.warning("one reader failed, using the other: %s", describe(e))
+            log.warning("one reader failed, so the other's result is not used alone: %s", describe(e))
         case _:
             pass
     return ra, rb
-
-
-def _either[T](ra: Result[T, LLMError], rb: Result[T, LLMError]) -> Result[T, LLMError]:
-    """The successful side when only one succeeded, else `ra` (its error when both failed)."""
-    return rb if isinstance(ra, Failure) and isinstance(rb, Success) else ra
 
 
 def _key(p: Policy, f: RawFact) -> tuple[str, Lit] | None:
@@ -118,8 +118,10 @@ class AgreeingFacts:
         match ra, rb:
             case Success(xs), Success(ys):
                 return Success(agree_facts(p, xs, ys))
+            case Failure(_), _:
+                return ra
             case _:
-                return _either(ra, rb)
+                return rb
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,8 +134,16 @@ class AgreeingAnswers:
         match ra, rb:
             case Success(x), Success(y):
                 return Success(agree_answers(p, var, message, x, y))
+            case Failure(Unsupported()), Success(_):
+                return rb
+            case Success(_), Failure(Unsupported()):
+                return ra
+            case (Failure(e), Success(_)) | (Success(_), Failure(e)):
+                return Success(Unclear(f"a reader failed: {describe(e)}"))
+            case Failure(Unsupported()), Failure(_):
+                return rb  # the other reader's real error, not the reader that had no reading
             case _:
-                return _either(ra, rb)
+                return ra
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,5 +156,7 @@ class UnionClaims:
         match ra, rb:
             case Success(xs), Success(ys):
                 return Success(union_claims(xs, ys))
+            case Failure(_), _:
+                return ra
             case _:
-                return _either(ra, rb)
+                return rb

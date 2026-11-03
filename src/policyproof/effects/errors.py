@@ -21,7 +21,14 @@ class Refused:
     message: str
 
 
-type LLMError = Unavailable | Malformed | Refused
+@dataclass(frozen=True, slots=True)
+class Unsupported:
+    """The reader can't read this kind of value at all (e.g. Jev and number answers): it has no reading, so another
+    reader's stands."""
+    message: str
+
+
+type LLMError = Unavailable | Malformed | Refused | Unsupported
 
 
 def describe(e: LLMError) -> str:
@@ -32,5 +39,7 @@ def describe(e: LLMError) -> str:
             return f"unusable output: {m}"
         case Refused(m):
             return f"refused: {m}"
+        case Unsupported(m):
+            return f"unsupported: {m}"
         case _:
             assert_never(e)
