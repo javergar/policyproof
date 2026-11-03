@@ -10,7 +10,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, ModelRetry
-from pydantic_ai.exceptions import ContentFilterError, ModelAPIError, UnexpectedModelBehavior
+from pydantic_ai.exceptions import (
+    AgentRunError,
+    ContentFilterError,
+    FallbackExceptionGroup,
+    ModelAPIError,
+    UnexpectedModelBehavior,
+)
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from returns.result import Failure, Result, Success
@@ -87,6 +93,10 @@ async def _run[T](agent: Agent[None, T], prompt: str) -> Result[T, LLMError]:
     except UnexpectedModelBehavior as e:
         return Failure(Malformed(str(e)))
     except ModelAPIError as e:
+        return Failure(Unavailable(str(e)))
+    except FallbackExceptionGroup as e:  # every model of a FallbackModel failed
+        return Failure(Unavailable("; ".join(str(x) for x in e.exceptions)))
+    except AgentRunError as e:  # anything else that stopped the run, e.g. a usage limit
         return Failure(Unavailable(str(e)))
 
 

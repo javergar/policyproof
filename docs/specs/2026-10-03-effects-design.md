@@ -125,13 +125,14 @@ type LLMError = Unavailable | Malformed | Refused | Unsupported   # each a froze
 
 | Error | When |
 |---|---|
-| `Unavailable` | Network failure, throttling, authentication, or a 5xx (`ModelAPIError`, `ModelHTTPError`). |
+| `Unavailable` | Network failure, throttling, authentication, or a 5xx (`ModelAPIError`, `ModelHTTPError`); every model of a `FallbackModel` failing (`FallbackExceptionGroup`); or any other pydantic-ai run failure (`AgentRunError`, e.g. `UsageLimitExceeded`). |
 | `Malformed` | Retries ran out (`UnexpectedModelBehavior`), or the final output failed its guard. |
 | `Refused` | The model declined or a content filter fired, or Jev handed off (`DecisionHandOff`, including `UnsureRoute` and `UnfillableRoute`). |
 | `Unsupported` | The reader can't read this kind of value at all (Jev asked for an Int or Real answer): it has no reading, so another reader's stands. |
 
-Any other exception is a bug in our code or a misconfiguration, and propagates. A guard rejecting an item is **not**
-an error: it shows up as an `Unclear` reading or as an entry in a `rejected` list.
+Any other exception (pydantic-ai's `UserError` included) is a bug in our code or a misconfiguration, and propagates.
+A guard rejecting an item is **not** an error: it shows up as an `Unclear` reading or as an entry in a `rejected`
+list.
 
 ## Ports (`effects/ports.py`)
 

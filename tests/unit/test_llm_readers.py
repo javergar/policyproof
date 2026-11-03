@@ -4,6 +4,7 @@ import json
 
 from pydantic_ai.exceptions import ContentFilterError, ModelHTTPError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from returns.result import Failure, Success
 
@@ -120,6 +121,13 @@ def test_provider_errors_are_mapped(toy):
     assert isinstance(answer(down, toy).failure(), Unavailable)
     blocked = Script(ContentFilterError("filtered"))
     assert isinstance(answer(blocked, toy).failure(), Refused)
+
+
+def test_every_model_of_a_fallback_model_failing_is_unavailable(toy):
+    down = FallbackModel(Script(ModelHTTPError(503, "a", body="busy")).model,
+                         Script(ModelHTTPError(502, "b", body="gateway")).model)
+    got = asyncio.run(LLMReaders(down).read_claims(toy, "You'll get a refund."))
+    assert isinstance(got.failure(), Unavailable)
 
 
 def test_llm_readers_implement_every_port():
