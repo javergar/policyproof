@@ -11,7 +11,7 @@ from policyproof.core.check import (
 from policyproof.core.decide import NeedInfo, decide
 from policyproof.core.facts import Answered, Fact, FromSystem, facts
 from policyproof.core.solver import compile
-from policyproof.core.syntax import BoolLit, Cmp, Implies, IntLit, Not, Or, Var
+from policyproof.core.syntax import And, BoolLit, Cmp, Iff, Implies, In, IntLit, Not, Or, Var
 
 LATE = Fact("daysLate", IntLit(3), FromSystem("tracking"))
 WANTS = Fact("wantsRefund", BoolLit(True), Answered("Would you like your money back?", "yes"))
@@ -72,6 +72,29 @@ def test_a_claim_the_policy_makes_true_whatever_the_facts_leaves_its_quote_unche
                          Cmp("ge", Var("daysLate"), IntLit(0))):  # constraint T6
         result = check_reply(c, d, fs, reply, [REFUND, Claim(says_nothing, quote)])
         assert not result.passed and [r.status for r in result.claims] == ["proven", "vacuous"], says_nothing
+
+
+def test_a_claim_the_facts_make_hollow_leaves_its_quote_unchecked(toy):
+    """Decided refund: an option that can't happen, or a false "if", makes a proven claim say less than it reads."""
+    c, d, fs = setup(toy, LATE, WANTS)
+    reply = "You will get a full refund, and you'll also get a voucher."
+    quote = "you'll also get a voucher"
+    far = Cmp("gt", Var("daysLate"), IntLit(100))
+    for hollow in (Or((Var("voucher"), Var("refund"))),
+                   Implies(far, Var("voucher")),
+                   And((Var("refund"), Or((Var("voucher"), Var("isLate"))))),
+                   In(Var("daysLate"), (IntLit(3), IntLit(200))),  # an `in` is an `or` of values
+                   Implies(Or((far, Var("isLate"))), Var("refund")),  # an option of the condition is false
+                   Not(And((far, Not(Var("voucher"))))),  # far implies voucher, with a negation
+                   Iff(far, Var("voucher")),  # true only because both sides are false
+                   Not(Not(Or((Var("voucher"), Var("refund")))))):
+        result = check_reply(c, d, fs, reply, [REFUND, Claim(hollow, quote)])
+        assert not result.passed and [r.status for r in result.claims] == ["proven", "hollow"], hollow
+    # Every option possible and every "if" true: the claim says what it reads as.
+    for informative in (Implies(Var("isLate"), Var("refund")), Or((Var("refund"), Var("wantsRefund"))),
+                        Iff(Var("isLate"), Var("refund"))):
+        result = check_reply(c, d, fs, "You will get a full refund.", [Claim(informative, REFUND.quote)])
+        assert [r.status for r in result.claims] == ["proven"], informative
 
 
 def test_a_decided_reply_must_state_the_outcome(toy):

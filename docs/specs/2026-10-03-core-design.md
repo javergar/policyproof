@@ -245,8 +245,12 @@ it refined the spec in these places:
   contradiction at run time.
 - **The answer check fails closed.** The built-in `grounded` rule fails a claim whose quote isn't in the reply. A claim
   that isn't a Boolean statement over the policy's names is `ill_typed`, and one the rules prove with no facts at all
-  (such as `voucher or not voucher`, or a rule restated) is `vacuous`, since it says nothing about the case; both are
-  also problems.
+  (such as `voucher or not voucher`, or a rule restated) is `vacuous`, since it says nothing about the case. A claim
+  that is proven only because the facts rule out part of it, an `or` option that can't happen or an `implies` whose
+  condition is false, is `hollow` (also through `in`, `iff` and negations of the connectives; comparisons aren't
+  rewritten). This is strict on purpose: offering the alternative the customer didn't choose ("if you'd rather have a
+  voucher, …", `not wantsRefund implies voucher`) is hollow too, so such a reply is rewritten or falls back. All three
+  are also problems.
 - **The decoder catches more YAML mistakes:**
   - It rejects duplicate keys.
   - It explains `YES`, `NO`, `ON` and `OFF` wherever they appear, not only in sort definitions.

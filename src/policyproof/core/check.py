@@ -27,10 +27,11 @@ from policyproof.core.prove import (
     entails,
 )
 from policyproof.core.solver import Compiled
-from policyproof.core.syntax import BOOL, Expr
+from policyproof.core.syntax import BOOL, And, Cmp, Expr, Iff, Implies, In, Not, Or
 from policyproof.core.typecheck import signature, sort_of
 
-type ClaimStatus = Literal["proven", "contradicts", "not_proven", "inconsistent", "ungrounded", "ill_typed", "vacuous"]
+type ClaimStatus = Literal["proven", "contradicts", "not_proven", "inconsistent", "ungrounded", "ill_typed", "vacuous",
+                           "hollow"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,12 +75,60 @@ def normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+def _connectives(e: Expr) -> Expr:
+    """`e` with negations pushed in through `and`, `or`, `implies`, `iff` and `in` (`not (a and b)` is `not a or not
+    b`), an `in` of several values as an `or` of `eq`s, and `p iff q` as `(p implies q) and (q implies p)`.
+    Comparisons and arithmetic are left as they are: this model only spells out the connectives."""
+    match e:
+        case And(args):
+            return And(tuple(map(_connectives, args)))
+        case Or(args):
+            return Or(tuple(map(_connectives, args)))
+        case Implies(p, q):
+            return Implies(_connectives(p), _connectives(q))
+        case Iff(p, q):
+            return And((_connectives(Implies(p, q)), _connectives(Implies(q, p))))
+        case In(arg, values) if len(values) > 1:
+            return Or(tuple(Cmp("eq", arg, v) for v in values))
+        case Not(Not(x)):
+            return _connectives(x)
+        case Not(And(args)):
+            return Or(tuple(_connectives(Not(a)) for a in args))
+        case Not(Or(args)):
+            return And(tuple(_connectives(Not(a)) for a in args))
+        case Not(Implies(p, q)):
+            return And((_connectives(p), _connectives(Not(q))))
+        case Not(Iff(p, q)):
+            return Or((_connectives(And((p, Not(q)))), _connectives(And((Not(p), q)))))
+        case Not(In(arg, values)) if len(values) > 1:
+            return And(tuple(Not(Cmp("eq", arg, v)) for v in values))
+        case _:
+            return e
+
+
+def _conditions(e: Expr) -> tuple[Expr, ...]:
+    """The parts of a statement (spelled out by `_connectives`) that must be possible for it to say what it reads as:
+    each option of an `or`, and the condition of an `implies` with each of its options. Found through `and`, `or` and
+    both sides of `implies`."""
+    match e:
+        case And(args):
+            return tuple(x for a in args for x in _conditions(a))
+        case Or(args):
+            return tuple(x for a in args for x in (a, *_conditions(a)))
+        case Implies(lhs, rhs):
+            return (lhs, *_conditions(lhs), *_conditions(rhs))
+        case _:
+            return ()
+
+
 def judge_claims(c: Compiled, fs: Facts, reply: str, claims: Sequence[Claim]) -> tuple[ClaimResult, ...]:
     """Each claim's status against the rules and the firm facts. 'ungrounded': the quote isn't in the reply, so the
     claim can't be tied to what the customer would read. 'ill_typed': not a Boolean statement over the policy's
     names (a translator error), so it can't be checked at all. 'vacuous': the rules prove it with no facts at all (e.g.
-    `voucher or not voucher`, or a rule restated), so it says nothing about this case and its quote is left
-    unchecked. A claim made empty by the facts themselves (a false "if", or a weakening "or") isn't caught."""
+    `voucher or not voucher`, or a rule restated), so it says nothing about this case. 'hollow': proven, but only
+    because the facts rule out a part of it: an `or` (or `in`) option that can't happen (`voucher or refund` once a
+    refund is decided) or an `if` that is false (`daysLate > 100 implies voucher`, also when written with `iff` or a
+    negation), so it says less than it reads. Vacuous and hollow claims leave their quotes unchecked, so both fail."""
     text, given, sig = normalize(reply), fact_assertions(firm_facts(c, fs)), signature(c.policy)
 
     def status(claim: Claim) -> ClaimStatus:
@@ -92,7 +141,10 @@ def judge_claims(c: Compiled, fs: Facts, reply: str, claims: Sequence[Claim]) ->
         verdict = classify(c, claim.expr, given)
         match verdict:
             case Proven():
-                return "proven"
+                # a part the solver can't show is possible counts as ruled out: the check fails closed
+                ruled_out = (isinstance(classify(c, part, given), Refuted | Undetermined)
+                             for part in _conditions(_connectives(claim.expr)))
+                return "hollow" if any(ruled_out) else "proven"
             case Refuted():
                 return "contradicts"
             case Contingent() | Undetermined():
@@ -120,7 +172,9 @@ def claims_hold(i: CheckInput) -> tuple[Problem, ...]:
              "not_proven": "is not proven: nothing in the decision supports it",
              "inconsistent": "rests on facts that contradict each other",
              "vacuous": "can't be checked: the policy makes it true whatever the facts are, so it says nothing about "
-                        "this case"}
+                        "this case",
+             "hollow": "can't be checked: it is true only because the facts rule out part of it (an option that "
+                       "can't happen, or an \"if\" that is false)"}
     return tuple(Problem("claims_hold", f'"{r.claim.quote}" {words[r.status]}.')
                  for r in i.claims if r.status in words)
 
