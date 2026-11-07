@@ -12,14 +12,17 @@
 3. If an outcome is proven only with a volunteered fact, that fact is confirmed first: `NeedInfo(reason="confirm")`.
 4. Otherwise the policy asks about the askable variable whose answers decide the most outcomes (the what-if table),
    ties broken by policy order; Int and Real questions (whose answers can't be enumerated) only when nothing else
-   is left. While an earlier outcome is open, only a question with an answer that settles it is asked; when none
-   has one (it hangs on system facts not given, say), the result is `Escalate`. With nothing left to ask, or no
+   is left. While an earlier outcome is open, only a question linked to it through the rules whose answer settles
+   it, alone or together with one more answer (`JOINT_ANSWERS`), is asked, those that settle it alone first; when
+   none can (it hangs on system facts not given, say), or after `JOINT_TRIES` combinations, the result is
+   `Escalate`. With nothing left to ask, or no
    outcomes at all: `Escalate`.
 """
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import combinations, product
 from typing import Literal, assert_never
 
 from returns.pipeline import is_successful
@@ -222,11 +225,37 @@ def what_if(c: Compiled, firm: Sequence[Fact], var: str) -> tuple[tuple[Lit, str
     return tuple(out)
 
 
-def _settles(c: Compiled, firm: Sequence[Fact], var: str, blocked: str) -> bool:
-    """Some possible answer to `var` proves the open outcome `blocked` or moves it out of the way."""
-    o = next(x for x in c.policy.outcomes if x.name == blocked)
-    return any(isinstance(_step(c, o, fact_assertions([*firm, Fact(var, value, Answered("", ""))])), Proven | None)
-               for value in _answers(_variable(c, var)))
+JOINT_ANSWERS = 2  # how many answers together may settle an open outcome before decide stops looking and escalates
+JOINT_TRIES = 256  # how many combinations of answers decide tries for an open outcome before it stops looking
+
+
+def _linked(c: Compiled, o: Outcome) -> frozenset[str]:
+    """The variables linked to the outcome's through rules that share variables: only these can bear on it."""
+    near = {v for v, _ in o.assignment}
+    groups = [free_vars(rule_expr(r)) for r in c.policy.rules]
+    while grown := [g for g in groups if g & near and not g <= near]:
+        near.update(*grown)
+    return frozenset(near)
+
+
+def _settling(c: Compiled, firm: Sequence[Fact], candidates: Sequence[Variable], o: Outcome) -> list[Variable] | None:
+    """The candidates whose possible answers, alone or with up to `JOINT_ANSWERS - 1` others, prove the open outcome
+    `o` or move it out of the way; questions that settle it alone come first. None means decide stopped looking after
+    `JOINT_TRIES` combinations of answers."""
+    tries = 0
+    for k in range(1, JOINT_ANSWERS + 1):
+        found: set[str] = set()
+        for group in combinations(candidates, k):
+            for values in product(*(_answers(v) for v in group)):
+                if (tries := tries + 1) > JOINT_TRIES:
+                    return None
+                answered = [*firm, *(Fact(v.name, x, Answered("", "")) for v, x in zip(group, values, strict=True))]
+                if isinstance(_step(c, o, fact_assertions(answered)), Proven | None):
+                    found.update(v.name for v in group)
+                    break
+        if found:
+            return [v for v in candidates if v.name in found]
+    return []
 
 
 def _question(c: Compiled, firm: Sequence[Fact], every: Sequence[Fact], unclear: frozenset[str],
@@ -238,13 +267,21 @@ def _question(c: Compiled, firm: Sequence[Fact], every: Sequence[Fact], unclear:
                   if isinstance(v.role, Ask) and v.name not in known and v.name in used]
     enumerable = [v for v in candidates if _answers(v)]
     if blocked is not None:
-        enumerable = [v for v in enumerable if _settles(c, firm, v.name, blocked)]
-    candidates = enumerable or [v for v in candidates if not _answers(v)]
-    if not candidates and blocked is not None:
-        missing = [v.name for v in c.policy.variables
-                   if isinstance(v.role, System) and v.name not in known and v.name in used]
-        unsupplied = f"; it depends on facts not given: {', '.join(missing)}" if missing else ""
-        return Escalate(f"outcome {blocked} may still hold and no question can settle it{unsupplied}")
+        held = next(o for o in c.policy.outcomes if o.name == blocked)
+        near = _linked(c, held)
+        settling = _settling(c, firm, [v for v in enumerable if v.name in near], held)
+        if settling is None:
+            return Escalate(f"outcome {blocked} may still hold, and decide stopped looking for questions that settle "
+                            f"it after {JOINT_TRIES} combinations of answers")
+        candidates = settling or [v for v in candidates if not _answers(v) and v.name in near]
+        if not candidates:
+            missing = [v.name for v in c.policy.variables
+                       if isinstance(v.role, System) and v.name not in known and v.name in near]
+            unsupplied = f"; it depends on facts not given: {', '.join(missing)}" if missing else ""
+            return Escalate(f"outcome {blocked} may still hold and no answers to the questions left (up to "
+                            f"{JOINT_ANSWERS} together) can settle it{unsupplied}")
+    else:
+        candidates = enumerable or candidates
     if not candidates:
         return Escalate("no outcome can be proven and there is nothing left to ask")
     tables = [what_if(c, firm, v.name) for v in candidates]

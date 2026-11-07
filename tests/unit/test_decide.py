@@ -158,6 +158,45 @@ def test_with_system_facts_missing_only_a_question_that_settles_the_open_outcome
     assert isinstance(stuck, Escalate) and "store_credit" in stuck.reason and "daysSincePurchase" in stuck.reason
 
 
+JOINT = """policy: joint
+version: "1"
+variables:
+  late: { sort: Bool, role: system }
+  a: { sort: Bool, role: ask, question: "Was it a gift?" }
+  b: { sort: Bool, role: ask, question: "Was it wrapped?" }
+  match: { sort: Bool, role: derived }
+  credit: { sort: Bool, role: derived }
+rules:
+  - { id: J1, define: { var: match, as: { iff: [a, b] } } }
+  - { id: J2, define: { var: credit, as: late } }
+outcomes:
+  matched: { match: true }
+  credit: { credit: true }
+  nothing: { match: false, credit: false }
+"""
+
+
+def test_an_open_outcome_two_answers_settle_together_is_asked_about_not_escalated():
+    """`matched` hangs on a ⇔ b: no single answer settles it, but a and then b do."""
+    from policyproof.core.codec import from_yaml
+    c = compile(from_yaml(JOINT).unwrap())
+    late = sys("late", BoolLit(True))
+    first = decide(c, facts(late))
+    assert isinstance(first, NeedInfo) and first.var == "a"
+    gift = Fact("a", BoolLit(True), Answered(first.question, "yes"))
+    assert decide(c, facts(late, gift)) == NeedInfo("b", "Was it wrapped?", "missing",
+                                                    ((BoolLit(True), "matched"), (BoolLit(False), "credit")))
+
+
+def test_decide_stops_looking_for_joint_answers_after_the_cap(monkeypatch):
+    from policyproof.core import decide as decide_module
+    from policyproof.core.codec import from_yaml
+    monkeypatch.setattr(decide_module, "JOINT_TRIES", 4)  # a and b alone: 4 tries; the pair would need 4 more
+    d = decide(compile(from_yaml(JOINT).unwrap()), facts(sys("late", BoolLit(True))))
+    assert d == Escalate("outcome matched may still hold, and decide stopped looking for questions that settle it "
+                         "after 4 combinations of answers")
+
+
 def test_an_open_outcome_the_solver_gives_up_on_escalates(monkeypatch):
     from policyproof.core import decide as decide_module
     from policyproof.core.codec import from_yaml
