@@ -6,7 +6,7 @@ from fakes import Answers, Claims, Facts, Rewriter
 from returns.result import Failure, Result, Success
 
 from policyproof.core.syntax import CheckedPolicy
-from policyproof.effects.errors import LLMError, Unavailable
+from policyproof.effects.errors import LLMError, Refused, Unavailable
 from policyproof.effects.ports import RawAnswer, RawClaim, Said
 from policyproof.eval.cases import decode
 from policyproof.eval.grade import Conservative, Correct, Wrong
@@ -23,8 +23,8 @@ VOUCHER = Success((RawClaim("voucher", "get a voucher"),))
 REFUND = Success((RawClaim("refund", "get a refund"),))
 
 
-def config(name="fake", answers=None, claims=None, rewriter=None):
-    return Configuration(name, answers or Answers(Success(Said(True, "money back"))), NO_FACTS,
+def config(name="fake", answers=None, claims=None, rewriter=None, facts=None):
+    return Configuration(name, answers or Answers(Success(Said(True, "money back"))), facts or NO_FACTS,
                          claims or Claims([VOUCHER, REFUND]), rewriter or Rewriter(Success("You'll get a refund.")))
 
 
@@ -54,6 +54,16 @@ def test_reader_errors_are_conservative():
     down = config(answers=Answers(Failure(Unavailable("down"))))
     case = asyncio.run(evaluate(CASES, [down], runs=1)).configurations[0].cases[0]
     assert case.grade == Conservative("reader error: provider unavailable: down")
+
+
+def test_a_turn_that_went_on_without_a_failed_fact_reader_is_conservative_but_a_refusal_is_not():
+    """The decision is right either way; a fact reader that couldn't run says the configuration is broken, while one
+    that was unsure (refused) only shows on facts the case expected it to read."""
+    down = config(facts=Facts(Failure(Unavailable("down"))))
+    unsure = config(facts=Facts(Failure(Refused("unsure"))))
+    turns = [asyncio.run(evaluate(CASES, [c], runs=1)).configurations[0].cases[0] for c in (down, unsure)]
+    assert [t.grade for t in turns] == [
+        Conservative("went on without a reader that failed: provider unavailable: down"), Correct()]
 
 
 @dataclass

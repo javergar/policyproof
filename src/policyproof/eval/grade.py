@@ -32,9 +32,12 @@ type Grade = Correct | Conservative | Wrong
 
 @dataclass(frozen=True, slots=True)
 class TurnSeen:
-    """What a turn produced: its decision and every fact it ended with."""
+    """What a turn produced: its decision, every fact it ended with, and the readers that failed to run while the turn
+    went on without them (`Unavailable` or `Malformed` in `Turn.degraded`, described). A reader that refused (it was
+    unsure, or declined) or can't read a kind of value by design isn't a failure: the turn is graded by what it did."""
     decision: Decision
     facts: Facts
+    failed: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,8 +148,9 @@ def _facts(case: TurnCase, fs: Facts) -> Grade:
 
 def grade_turn(case: TurnCase, seen: TurnOutcome) -> Grade:
     match seen:
-        case TurnSeen(decision, fs):
-            return worst([_facts(case, fs), _decision(case, decision)])
+        case TurnSeen(decision, fs, failed):
+            went_on = [Conservative(f"went on without a reader that failed: {'; '.join(failed)}")] if failed else []
+            return worst([_facts(case, fs), _decision(case, decision), *went_on])
         case ReaderFailed(reason):
             return Conservative(f"reader error: {reason}")
         case Crashed(reason):

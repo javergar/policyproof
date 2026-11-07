@@ -6,9 +6,10 @@
 - `AgreeingAnswers` accepts an answer only if both read the same value; otherwise the question is asked again.
 - `UnionClaims` checks every claim either reader found: more claims can only fail more drafts.
 
-Values are compared as policy literals, so Jev's `"true"` agrees with an LLM's `True`. A failed reader is never
-outvoted by the other: if one fails, `AgreeingFacts` and `UnionClaims` return its error and `AgreeingAnswers` returns
-`Unclear`, as on a disagreement; if both fail, the first error is returned. The exception is an `Unsupported` reader
+Values are compared as policy literals, so Jev's `"true"` agrees with an LLM's `True`. A failed reader is never outvoted
+by the other: if one fails, `AgreeingFacts` and `UnionClaims` return its error and `AgreeingAnswers` returns `Unclear`,
+as on a disagreement; if both fail, the error that speaks more strongly against a reading is returned (`errors.worse`: a
+failure to run, then a refusal, then an unsupported read; the first on a tie). The exception is an `Unsupported` reader
 (one that can't read that kind of value at all, like Jev and number answers): it has no reading, so `AgreeingAnswers`
 returns the other's answer, as a single reader's. Ports return only a `Result`, so a one-sided failure (other than
 `Unsupported`) and a disagreement are also reported on the `policyproof.consensus` logger at WARNING.
@@ -24,7 +25,7 @@ from returns.result import Failure, Result, Success
 from policyproof.core._result import unreachable
 from policyproof.core.facts import Evidence, Quoted, Scored
 from policyproof.core.syntax import CheckedPolicy, Lit, Policy
-from policyproof.effects.errors import LLMError, Unsupported, describe
+from policyproof.effects.errors import LLMError, Unsupported, describe, worse
 from policyproof.effects.ports import (
     AnswerReader,
     ClaimReader,
@@ -136,6 +137,8 @@ class AgreeingFacts:
         match ra, rb:
             case Success(xs), Success(ys):
                 return Success(agree_facts(p, xs, ys, a_cant=_cant_read(self.a, p), b_cant=_cant_read(self.b, p)))
+            case Failure(ea), Failure(eb):
+                return Failure(worse(ea, eb))
             case Failure(_), _:
                 return ra
             case _:
@@ -162,10 +165,10 @@ class AgreeingAnswers:
                 return ra
             case (Failure(e), Success(_)) | (Success(_), Failure(e)):
                 return Success(Unclear(f"a reader failed: {describe(e)}"))
-            case Failure(Unsupported()), Failure(_):
-                return rb  # the other reader's real error, not the reader that had no reading
+            case Failure(ea), Failure(eb):
+                return Failure(worse(ea, eb))  # an unsupported reader's error never hides the other's real one
             case _:
-                return ra
+                unreachable()
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +181,8 @@ class UnionClaims:
         match ra, rb:
             case Success(xs), Success(ys):
                 return Success(union_claims(xs, ys))
+            case Failure(ea), Failure(eb):
+                return Failure(worse(ea, eb))
             case Failure(_), _:
                 return ra
             case _:

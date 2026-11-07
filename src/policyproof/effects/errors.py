@@ -1,6 +1,6 @@
 """Why a reader produced nothing. A guard rejecting what a reader produced is not an error (see `guards`)."""
 from dataclasses import dataclass
-from typing import assert_never
+from typing import Literal, assert_never
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,3 +43,27 @@ def describe(e: LLMError) -> str:
             return f"unsupported: {m}"
         case _:
             assert_never(e)
+
+
+type Kind = Literal["failed", "refused", "unsupported"]
+
+
+def kind(e: LLMError) -> Kind:
+    """What an error says about the reading. 'failed': the reader didn't run properly (provider or output), so a
+    configuration that hits it is broken. 'refused': the model was unsure or declined, an honest non-answer.
+    'unsupported': the reader can't read this kind of value by design, so it had no say."""
+    match e:
+        case Unavailable() | Malformed():
+            return "failed"
+        case Refused():
+            return "refused"
+        case Unsupported():
+            return "unsupported"
+        case _:
+            assert_never(e)
+
+
+def worse(a: LLMError, b: LLMError) -> LLMError:
+    """The error that speaks more strongly against a reading (failed, then refused, then unsupported); `a` on a tie."""
+    order: list[Kind] = ["unsupported", "refused", "failed"]
+    return b if order.index(kind(b)) > order.index(kind(a)) else a

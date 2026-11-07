@@ -55,6 +55,14 @@ def test_reader_failures_are_conservative_and_crashes_wrong():
     assert grade_reply(ReplyCase("c", False, {}, "d", "pass"), Crashed("boom")) == Wrong("crashed: boom")
 
 
+def test_a_turn_that_went_on_without_a_failed_reader_is_at_best_conservative():
+    asked = turn(AskExpected("wantsRefund"))
+    assert grade_turn(asked, TurnSeen(ASK, {}, ("provider unavailable: down",))) == Conservative(
+        "went on without a reader that failed: provider unavailable: down")
+    assert grade_turn(asked, TurnSeen(REFUND, {}, ("provider unavailable: down",))) == Wrong(
+        "decided refund, expected a question about wantsRefund")
+
+
 def test_expected_facts_must_be_read_with_their_values():
     want = (("wantsRefund", BoolLit(True)),)
     said = Fact("wantsRefund", BoolLit(True), Answered("q", "yes"))

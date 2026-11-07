@@ -259,9 +259,10 @@ volunteered facts, and `guard_reply` sends the fallback); `AgreeingAnswers` retu
 with the error described, so the question is asked again and the turn's facts are kept. The exception is
 `Unsupported`: that side never had a reading, so `AgreeingAnswers` returns the other side's answer, as a single
 reader's, and nothing is logged (it would fire on every number question under Jev). If both fail, the combinator
-returns `a`'s error. Any other one-sided failure and a dropped disagreement are also reported through the standard
-`logging` module (logger `policyproof.consensus`, level WARNING); ports return only a `Result`, so for a fact dropped
-on a disagreement that is the only report.
+returns the error that speaks more strongly against a reading (`errors.worse`: a failure to run, then a refusal, then
+an unsupported read; `a`'s on a tie), so the result doesn't depend on the readers' order. Any other one-sided failure
+and a dropped disagreement are also reported through the standard `logging` module (logger `policyproof.consensus`,
+level WARNING); ports return only a `Result`, so for a fact dropped on a disagreement that is the only report.
 `Turn.degraded` covers only errors that `read_turn` itself observes.
 
 **Laws:**

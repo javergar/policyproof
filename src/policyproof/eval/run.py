@@ -29,7 +29,7 @@ from policyproof.core.facts import Answered, Fact, FromSystem, Quoted, Scored, V
 from policyproof.core.render import pretty
 from policyproof.core.solver import Compiled, compile
 from policyproof.core.syntax import Ask
-from policyproof.effects.errors import describe
+from policyproof.effects.errors import describe, kind
 from policyproof.effects.pipeline import Conversation, Guarded, Readers, Turn, guard_reply, read_turn
 from policyproof.effects.ports import AnswerReader, ClaimReader, FactReader, NotAnswered, Rewriter, Unclear
 from policyproof.eval.cases import Case, CaseFile, ReplyCase, TurnCase
@@ -135,7 +135,8 @@ async def _turn(c: Compiled, cfg: Configuration, case: TurnCase) -> tuple[Grade,
         return grade_turn(case, Crashed(crash)), (f"crashed: {crash}",)
     match result:
         case Success(t):
-            return grade_turn(case, TurnSeen(t.decision, t.state.facts)), _turn_trace(case, t)
+            failed = tuple(describe(e) for e in t.degraded if kind(e) == "failed")
+            return grade_turn(case, TurnSeen(t.decision, t.state.facts, failed)), _turn_trace(case, t)
         case Failure(e):
             return grade_turn(case, ReaderFailed(describe(e))), (f"reader error: {describe(e)}",)
         case _:

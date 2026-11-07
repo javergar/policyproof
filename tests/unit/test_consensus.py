@@ -7,7 +7,7 @@ from returns.result import Failure, Success
 
 from policyproof.core.facts import Quoted, Scored
 from policyproof.effects.consensus import AgreeingAnswers, AgreeingFacts, UnionClaims
-from policyproof.effects.errors import Unavailable, Unsupported
+from policyproof.effects.errors import Refused, Unavailable, Unsupported
 from policyproof.effects.ports import NotAnswered, RawClaim, RawFact, Said, Unclear
 
 MSG = "It came by courier and I'd like my money back."
@@ -60,6 +60,17 @@ def test_an_unsupported_reader_leaves_the_other_answer_without_a_warning(toy, ca
         assert asyncio.run(AgreeingAnswers(said, unsupported).read_answer(toy, "wantsRefund", MSG)) == said.result
     assert "one reader failed" not in caplog.text
     assert asyncio.run(AgreeingAnswers(unsupported, Answers(DOWN)).read_answer(toy, "wantsRefund", MSG)) == DOWN
+
+
+def test_when_both_fail_the_failure_to_run_wins_whichever_side_it_is_on(toy):
+    """Refused (unsure) and Unsupported (no say) are weaker than a reader that didn't run: the result, and so the eval
+    grade, doesn't depend on the order the readers were given in."""
+    unsure, cant = Failure(Refused("unsure")), Failure(Unsupported("no numbers"))
+    for x, y in ((unsure, DOWN), (DOWN, unsure)):
+        assert asyncio.run(AgreeingFacts(Facts(x), Facts(y)).read_facts(toy, MSG)) == DOWN
+        assert asyncio.run(UnionClaims(Claims([x]), Claims([y])).read_claims(toy, "reply")) == DOWN
+    for x, y in ((cant, unsure), (unsure, cant)):
+        assert asyncio.run(AgreeingAnswers(Answers(x), Answers(y)).read_answer(toy, "wantsRefund", MSG)) == unsure
 
 
 @dataclass

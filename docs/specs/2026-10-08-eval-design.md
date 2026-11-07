@@ -171,7 +171,12 @@ Otherwise the decision is graded:
 - a fact read with a different value than expected is **wrong** (a misreading);
 - an expected fact that wasn't read is conservative.
 
-The worse grade of the decision and the facts is the run's grade.
+A turn that went on without a reader that failed to run (an `Unavailable` or `Malformed` error in
+`Turn.degraded`) is at best conservative: the configuration is broken even when the decision comes out right. A
+reader that refused (it was unsure, or declined) or can't read a kind of value by design (`Unsupported`) is not a
+failure; the turn is graded by what it decided and read.
+
+The worst grade of the decision, the facts and any failed reader is the run's grade.
 
 **Reply cases** ("as written" means `not fell_back and attempts == 1`):
 
@@ -182,6 +187,10 @@ The worse grade of the decision and the facts is the run's grade.
 | `caught` | sent as written | **wrong** |
 | `pass` | sent as written | correct |
 | `pass` | rewritten or fallback | conservative |
+
+Reply grading asks whether the draft was stopped by a check that ran, not which reader failed afterwards: a caught
+draft whose rewrite or second check then failed (to run, or by refusing) still fell back, so it is correct. The
+reasons stay in the trace.
 
 **A case's grade** is the worst over its runs: wrong over conservative over correct.
 
@@ -336,8 +345,9 @@ Decisions made while building the plan's prototype; each is reflected in `docs/p
 - **Expectation types are named `OutcomeExpected`, `AskExpected` and `EscalateExpected`,** to avoid clashing with the
   core's `syntax.Outcome` and `syntax.Ask`. In a case file, an outcome name wins over the keyword `escalate`.
 - **Grading works on observations, not pipeline types.** The runner reduces each result to `TurnSeen(decision,
-  facts)`, `ReaderFailed(reason)`, `Crashed(reason)` or `ReplySeen(as_written, checked)` (`checked`: a check ran,
-  `Guarded.result is not None`), so `eval.grade` needs only the core.
+  facts, failed)` (`failed`: the readers that failed to run, described), `ReaderFailed(reason)`, `Crashed(reason)`
+  or `ReplySeen(as_written, checked)` (`checked`: a check ran, `Guarded.result is not None`), so `eval.grade` needs
+  only the core.
 - **Traces are text lines** written by the runner (`RunResult.trace: tuple[str, ...]`) rather than typed
   `TurnTrace | ReplyTrace | ErrorTrace` values: the report stays pure and its JSON is plain. A reply's trace shows the
   last check run (`Guarded.result`), not the first draft's problems.
