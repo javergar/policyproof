@@ -4,9 +4,9 @@ Jev answers typed questions with probabilities instead of writing text. pydantic
 output type into Jev questions, so each reader builds one from the policy: a pick-one per variable, over the
 variable's values plus "not stated" (facts) or "unclear" and "not answered" (answers). Jev can't point to the words it
 read, so facts carry `Scored` evidence (its confidence) and an answer quotes the whole message. Int and Real
-variables can't be asked as a pick-one: facts skip them, and an answer to one is `Unsupported`, so under
-`consensus.AgreeingAnswers` the other reader's answer stands. (`AgreeingFacts` keeps only facts both readers report, so
-it drops number facts from the other reader.)
+variables can't be asked as a pick-one: facts skip them (and `cant_read` names them), and an answer to one is
+`Unsupported`, so under `consensus.AgreeingFacts` and `AgreeingAnswers` the other reader's number facts and answers
+stand.
 """
 from dataclasses import dataclass
 from typing import Annotated, Any, assert_never
@@ -114,6 +114,10 @@ class JevReaders:
     """A `FactReader` and an `AnswerReader` on Jev. Pass a `TypeSafeModel` (pin a version, e.g. `jev-1.13.0`)."""
     model: Model
     min_confidence: float = 0.5
+
+    def cant_read(self, p: CheckedPolicy) -> frozenset[str]:
+        """The variables a fact can't be read for: Int and Real ones (`facts_type` skips them)."""
+        return frozenset(v.name for v in p.variables if not isinstance(v.role, Derived) and options(v) is None)
 
     async def read_facts(self, p: CheckedPolicy, message: str) -> Result[tuple[RawFact, ...], LLMError]:
         output = facts_type(p)

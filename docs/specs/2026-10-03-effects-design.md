@@ -240,6 +240,9 @@ Each combinator wraps two ports into one and runs both concurrently.
   `Scored` evidence with the lower confidence is kept.
 - A variable they disagree on, or that only one reports, is dropped. A `FactReader` returns facts only, so a
   disagreement is logged (see below) rather than returned.
+- The exception is a variable one reader can't read at all: a reader that implements `FactsItCantRead.cant_read(p)`
+  (Jev, for Int and Real variables) has no say on those variables, so the other reader's facts about them are kept as
+  it reported them. Lacking a capability is not a disagreement.
 
 **`AgreeingAnswers(a, b)`, an `AnswerReader`:**
 - If both readers return `Said` with equal values, the result is `Said`, with the quote from the first quote that is
@@ -264,7 +267,7 @@ on a disagreement that is the only report.
 **Laws:**
 - Each combinator is commutative, up to which side's evidence or quote is kept.
 - Each is idempotent (`X(a, a)` is the same as `a`).
-- `AgreeingFacts` never keeps more than either side kept.
+- `AgreeingFacts` keeps a fact only if both sides report it, or if the one side that can read its variable does.
 - `UnionClaims` never keeps fewer.
 
 ## Pipelines (`effects/pipeline.py`)
@@ -372,7 +375,8 @@ milestone 1's fail-closed ruling.
   - the field description is the variable's question, or its description for system variables.
   - Each answered field becomes a `RawFact` with `Scored(confidence)`, read from
     `provider_details["confidence"]`.
-  - Int and Real variables are skipped (documented); `AgreeingFacts` with an LLM covers them.
+  - Int and Real variables are skipped, and `cant_read(p)` names them, so `AgreeingFacts` with an LLM keeps the
+    LLM's facts about them.
 - **Answers:**
   - one `Choices` over the variable's values plus `unclear` and `not_answered`;
   - the result is `Said(value, quote=message)`, because Jev can't point to a span (the guard's opening-word check

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from dataclasses import dataclass
 
 from fakes import Answers, Claims, Facts
 from returns.result import Failure, Success
@@ -59,6 +60,28 @@ def test_an_unsupported_reader_leaves_the_other_answer_without_a_warning(toy, ca
         assert asyncio.run(AgreeingAnswers(said, unsupported).read_answer(toy, "wantsRefund", MSG)) == said.result
     assert "one reader failed" not in caplog.text
     assert asyncio.run(AgreeingAnswers(unsupported, Answers(DOWN)).read_answer(toy, "wantsRefund", MSG)) == DOWN
+
+
+@dataclass
+class CantReadDaysLate:
+    result: object
+
+    async def read_facts(self, p, message):
+        return self.result
+
+    def cant_read(self, p):
+        return frozenset({"daysLate"})
+
+
+def test_a_variable_one_reader_cant_read_is_left_to_the_other_even_when_nested(toy):
+    jev_like = CantReadDaysLate(Success((RawFact("wantsRefund", True, Scored(0.9)),)))
+    llm = Facts(Success((RawFact("daysLate", 3, Quoted("3 days")), RawFact("wantsRefund", True, Quoted("money")))))
+    days = RawFact("daysLate", 3, Quoted("3 days"))
+    assert days in asyncio.run(AgreeingFacts(jev_like, llm).read_facts(toy, MSG)).unwrap()
+    assert days in asyncio.run(AgreeingFacts(AgreeingFacts(jev_like, jev_like), llm).read_facts(toy, MSG)).unwrap()
+    # Neither can read it: neither has a say, so a fact only one of them reports anyway is dropped.
+    both_cant = AgreeingFacts(jev_like, CantReadDaysLate(llm.result))
+    assert days not in asyncio.run(both_cant.read_facts(toy, MSG)).unwrap()
 
 
 def test_answers_must_agree(toy):

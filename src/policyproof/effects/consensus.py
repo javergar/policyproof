@@ -1,6 +1,8 @@
 """Two readers as one, combined so that a disagreement errs on the safe side.
 
-- `AgreeingFacts` keeps only facts both readers found: fewer facts means more questions, never a wrong decision.
+- `AgreeingFacts` keeps only facts both readers found: fewer facts means more questions, never a wrong decision. A
+  reader that can't read a variable at all (`FactsItCantRead`, as Jev and numbers) has no say on it, so the other's
+  facts about it stand, as a single reader's.
 - `AgreeingAnswers` accepts an answer only if both read the same value; otherwise the question is asked again.
 - `UnionClaims` checks every claim either reader found: more claims can only fail more drafts.
 
@@ -27,6 +29,7 @@ from policyproof.effects.ports import (
     AnswerReader,
     ClaimReader,
     FactReader,
+    FactsItCantRead,
     NotAnswered,
     RawAnswer,
     RawClaim,
@@ -69,7 +72,10 @@ def _evidence(a: Evidence, b: Evidence) -> Evidence:
             unreachable()
 
 
-def agree_facts(p: Policy, a: Sequence[RawFact], b: Sequence[RawFact]) -> tuple[RawFact, ...]:
+def agree_facts(p: Policy, a: Sequence[RawFact], b: Sequence[RawFact], *, a_cant: frozenset[str] = frozenset(),
+                b_cant: frozenset[str] = frozenset()) -> tuple[RawFact, ...]:
+    """The facts both readers report, with the better evidence, and the facts one reports about a variable the other
+    can't read at all (`a_cant`, `b_cant`), as that reader reported them."""
     first_b: dict[tuple[str, Lit], RawFact] = {}
     for f in b:
         k = _key(p, f)
@@ -78,12 +84,24 @@ def agree_facts(p: Policy, a: Sequence[RawFact], b: Sequence[RawFact]) -> tuple[
     kept: dict[tuple[str, Lit], RawFact] = {}
     for f in a:
         k = _key(p, f)
-        if k is not None and k in first_b and k not in kept:
+        if k is None or k in kept:
+            continue
+        if f.var in b_cant and f.var not in a_cant:
+            kept[k] = f
+        elif k in first_b:
             kept[k] = RawFact(f.var, f.value, _evidence(f.evidence, first_b[k].evidence))
+    for f in b:
+        k = _key(p, f)
+        if k is not None and f.var in a_cant and f.var not in b_cant:
+            kept.setdefault(k, f)
     agreed = {var for var, _ in kept}
     for var in sorted(({f.var for f in a} & {f.var for f in b}) - agreed):
         log.warning("readers disagree on %s; dropping it", var)
     return tuple(kept.values())
+
+
+def _cant_read(r: FactReader, p: CheckedPolicy) -> frozenset[str]:
+    return r.cant_read(p) if isinstance(r, FactsItCantRead) else frozenset()
 
 
 def agree_answers(p: Policy, var: str, message: str, a: RawAnswer, b: RawAnswer) -> RawAnswer:
@@ -117,11 +135,15 @@ class AgreeingFacts:
         ra, rb = await _both(self.a.read_facts(p, message), self.b.read_facts(p, message))
         match ra, rb:
             case Success(xs), Success(ys):
-                return Success(agree_facts(p, xs, ys))
+                return Success(agree_facts(p, xs, ys, a_cant=_cant_read(self.a, p), b_cant=_cant_read(self.b, p)))
             case Failure(_), _:
                 return ra
             case _:
                 return rb
+
+    def cant_read(self, p: CheckedPolicy) -> frozenset[str]:
+        """What neither reader can read, so a combined reader nested in another keeps Jev's exemption."""
+        return _cant_read(self.a, p) & _cant_read(self.b, p)
 
 
 @dataclass(frozen=True, slots=True)

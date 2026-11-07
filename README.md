@@ -294,9 +294,9 @@ What each part does when something goes wrong (it always errs toward asking agai
 Claims cover the policy's variables only. A reply can still promise something the policy has no variable for (a
 callback, a payment method); catch those with the core's domain rules (`forbid`, `only_entities`).
 
-Readers can be combined (`effects.consensus`): `AgreeingFacts(jev, llm)` keeps only facts both found,
-`AgreeingAnswers(a, b)` accepts an answer only if both read the same value, and `UnionClaims(a, b)` checks every claim
-either found. If one of the two fails, the other's result is not used alone: combined facts and claims fail as a
+Readers can be combined (`effects.consensus`): `AgreeingFacts(jev, llm)` keeps only facts both found (or, for a
+number Jev can't read, the LLM's), `AgreeingAnswers(a, b)` accepts an answer only if both read the same value, and
+`UnionClaims(a, b)` checks every claim either found. If one of the two fails, the other's result is not used alone: combined facts and claims fail as a
 single reader's would, and a combined answer is `Unclear`, so the question is asked again. A WARNING is logged on
 `policyproof.consensus`. The exception is a reader that can't read that kind of value at all (`Unsupported`, as Jev
 for number answers): it has no reading, so `AgreeingAnswers` uses the other's answer, without a warning.

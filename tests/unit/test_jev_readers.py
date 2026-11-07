@@ -3,6 +3,7 @@ answers, so these tests pin exactly what Jev is asked without network access or 
 import asyncio
 
 from conftest import POLICIES, load
+from fakes import Facts
 from pydantic_ai.exceptions import ModelAPIError
 from pydantic_ai.models.decision import (
     ChoiceAnswer,
@@ -19,7 +20,8 @@ from returns.result import Success
 from typesafe_sdk import AsyncTypeSafeClient
 
 from policyproof.core.codec import from_yaml
-from policyproof.core.facts import Scored
+from policyproof.core.facts import Quoted, Scored
+from policyproof.effects.consensus import AgreeingFacts
 from policyproof.effects.errors import Refused, Unavailable, Unsupported
 from policyproof.effects.jev.readers import JevReaders, options
 from policyproof.effects.ports import AnswerReader, FactReader, NotAnswered, RawFact, Said, Unclear
@@ -55,6 +57,17 @@ def test_facts_ask_one_choice_per_boolean_or_enum_variable(toy):
     q = jev.questions["wantsRefund"]
     assert isinstance(q, ChoiceQuestion) and set(q.criteria) == {"true", "false", "not_stated"}
     assert isinstance(q.instructions, dict) and q.instructions["question"] == "Would you like your money back?"
+
+
+def test_paired_with_an_llm_the_number_facts_jev_cant_read_stand(toy):
+    """Jev has no say on daysLate (an Int), so the LLM's reading of it isn't dropped as if they disagreed."""
+    jev = JevReaders(Offline({"carrier": ("COURIER", 0.9), "wantsRefund": ("true", 0.8)}))
+    llm = Facts(Success((RawFact("daysLate", 3, Quoted("3 days late")), RawFact("wantsRefund", True, Quoted("money")),
+                         RawFact("carrier", "POST", Quoted("by post")))))
+    assert jev.cant_read(toy) == frozenset({"daysLate"})
+    got = asyncio.run(AgreeingFacts(jev, llm).read_facts(toy, MSG))
+    assert got == Success((RawFact("wantsRefund", "true", Quoted("money")),
+                           RawFact("daysLate", 3, Quoted("3 days late"))))
 
 
 def test_variables_the_message_does_not_mention_are_left_out(toy):
