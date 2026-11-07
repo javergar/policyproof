@@ -313,12 +313,24 @@ def _literals(vs: tuple[Expr, ...], t: Tree, path: str) -> Result[tuple[Lit, ...
     return Success(lits) if len(lits) == len(vs) else _err(path, t, "`in` takes literal values only")
 
 
+MAX_REAL_TEXT = 1000
+_REAL = re.compile(r"-?[0-9]+(?:\.[0-9]+|/[0-9]+)?")
+
+
+def real_value(x: object) -> Fraction | None:
+    """The exact number written as an int, or as text `-12`, `-2.5` or `-5/2` in ASCII digits, else None. No exponents
+    (`1e9999999` would take seconds to expand), at most `MAX_REAL_TEXT` characters of text, and no zero denominator."""
+    if isinstance(x, int) and not isinstance(x, bool):
+        return Fraction(x)
+    if not isinstance(x, str) or len(text := x.strip()) > MAX_REAL_TEXT or not _REAL.fullmatch(text):
+        return None
+    number, _, denominator = text.partition("/")
+    return None if denominator and int(denominator) == 0 else Fraction(number) / int(denominator or 1)
+
+
 def _real(arg: Tree, path: str) -> Result[Expr, DecodeError]:
-    if isinstance(arg, Scalar) and isinstance(arg.value, str | int) and not isinstance(arg.value, bool):
-        try:
-            return Success(RealLit(Fraction(arg.value)))
-        except (ValueError, ZeroDivisionError):
-            pass
+    if isinstance(arg, Scalar) and (q := real_value(arg.value)) is not None:
+        return Success(RealLit(q))
     return _err(path, arg, 'expected a decimal written as a string, e.g. {real: "2.5"} or {real: "5/2"}')
 
 
@@ -439,10 +451,8 @@ def _phrase_key(sort: Sort, key: str) -> Lit | None:
         case IntSort():
             return IntLit(int(key)) if re.fullmatch(r"-?\d+", key) else None
         case RealSort():
-            try:
-                return RealLit(Fraction(key))
-            except (ValueError, ZeroDivisionError):
-                return None
+            q = real_value(key)
+            return None if q is None else RealLit(q)
         case EnumSort(name, values):
             short = key.removeprefix(f"{name}.")
             return EnumLit(name, short) if short in values else None

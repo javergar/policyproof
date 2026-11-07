@@ -119,7 +119,7 @@ outcomes:                       # tried in order; each one is a conjunction of l
   |---|---|
   | `true`, `false` | Boolean literal |
   | `3`, `-2` | integer literal |
-  | `{real: "2.5"}` | exact decimal, read from the string into a `Fraction` (never a YAML float) |
+  | `{real: "2.5"}` | exact decimal, read from the string into a `Fraction` (never a YAML float): `-12`, `-2.5` or `-5/2` in ASCII digits, no exponent, at most 1000 characters, no zero denominator (`codec.real_value`, shared with the guards) |
   | `delayHours` | a variable, when the name is declared |
   | `CANCELLED` or `DisruptionType.CANCELLED` | an enum value; the bare form only when it is unambiguous and not a variable name |
   | `{not: e}` | negation |

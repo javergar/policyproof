@@ -21,6 +21,13 @@ def test_literal_for_reads_reals_exactly():
     assert literal_for(p, "kg", 3) == Success(RealLit(Fraction(3)))
     assert isinstance(literal_for(p, "kg", {"real": "heavy"}), Failure)
     assert isinstance(literal_for(p, "kg", 2.5), Failure)  # floats are inexact: write {real: "2.5"}
+    assert literal_for(p, "kg", {"real": "-5/2"}) == Success(RealLit(Fraction(-5, 2)))
+    big = Fraction(10**150, 3**200)
+    assert literal_for(p, "kg", {"real": str(big)}) == Success(RealLit(big))
+    # A zero denominator used to raise ZeroDivisionError, and an exponent took seconds to expand: both are refused,
+    # as are overlong text and non-ASCII digits. Values the code writes itself (str of a Fraction) read back.
+    for bad in ("1/0", "1e10000000", "2.5/2", "9" * 1001, "\u0663.\u0665"):
+        assert isinstance(literal_for(p, "kg", {"real": bad}), Failure), bad
 
 
 def test_literal_for_rejects_the_wrong_sort_and_unknown_names(toy):

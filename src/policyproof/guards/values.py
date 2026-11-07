@@ -1,9 +1,8 @@
 """Reading a reader's plain value as a literal of a variable's sort, and finding a quote in a text."""
-from fractions import Fraction
-
 from returns.result import Failure, Result, Success
 
 from policyproof.core.check import normalize
+from policyproof.core.codec import real_value
 from policyproof.core.syntax import (
     BoolLit,
     BoolSort,
@@ -22,7 +21,7 @@ from policyproof.core.typecheck import sort_name
 def literal_for(p: Policy, var: str, value: object) -> Result[Lit, str]:
     """`value` as a literal of `var`'s sort. Booleans may be `true`/`false` strings (as Jev's options are); enum
     values may be written `VALUE` or `Sort.VALUE`, in any case if that is unambiguous; reals are ints or
-    `{"real": "2.5"}` (never floats, which are inexact)."""
+    `{"real": "2.5"}` (never floats, which are inexact), in the codec's `real_value` form."""
     variable = next((v for v in p.variables if v.name == var), None)
     if variable is None:
         return Failure(f"unknown variable {var!r}")
@@ -35,12 +34,11 @@ def literal_for(p: Policy, var: str, value: object) -> Result[Lit, str]:
         case IntSort(), int() if not isinstance(value, bool):
             return Success(IntLit(value))
         case RealSort(), int() if not isinstance(value, bool):
-            return Success(RealLit(Fraction(value)))
+            q = real_value(value)
+            return bad if q is None else Success(RealLit(q))
         case RealSort(), {"real": str() | int() as text} if len(value) == 1:
-            try:
-                return Success(RealLit(Fraction(text)))
-            except ValueError:
-                return bad
+            q = real_value(text)
+            return bad if q is None else Success(RealLit(q))
         case EnumSort(name, values), str():
             short = value.split(".", 1)[1] if value.lower().startswith(f"{name.lower()}.") else value
             same = [v for v in values if v == short] or [v for v in values if v.lower() == short.lower()]
